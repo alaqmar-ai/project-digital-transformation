@@ -128,7 +128,7 @@ export interface NotificationItem {
   userId: string;       // recipient
   kind: NotificationKind;
   title: string;
-  body: string;
+  body?: string;
   refType?: 'major_project' | 'sub_project' | 'stage';
   refId?: string;
   isRead: boolean;

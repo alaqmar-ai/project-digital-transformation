@@ -1,12 +1,11 @@
 /**
- * Data adapter — abstracts Supabase vs localStorage fallback.
+ * Data adapter — Neon Postgres (via Server Actions) or localStorage fallback.
  *
- * Every UI hook talks to this module, never to Supabase directly.
- * When NEXT_PUBLIC_SUPABASE_URL is set, calls hit Supabase.
- * Otherwise we persist to localStorage so the app stays usable offline.
+ * When NEXT_PUBLIC_USE_NEON=true, every call goes through a typed Server Action
+ * that holds DATABASE_URL server-side. Otherwise the store persists to
+ * localStorage so the demo runs without a database.
  */
 
-import { supabaseEnabled, getSupabaseClient } from '@/lib/supabase/client';
 import type {
   MajorProject,
   SubProject,
@@ -17,8 +16,13 @@ import type {
   ActivityLog,
   User,
   Status,
+  HolidayKind,
+  NotificationKind,
 } from '@/lib/types';
 import { STAGES } from '@/lib/constants';
+import * as srv from '@/app/actions/data';
+
+export const useNeon = process.env.NEXT_PUBLIC_USE_NEON === 'true';
 
 // ─── localStorage keys (versioned) ─────────────────────────────────────────
 
@@ -50,9 +54,20 @@ function save<T>(k: string, v: T) {
 function rid(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
-
 function nowIso() {
   return new Date().toISOString();
+}
+
+function actorId(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const raw = localStorage.getItem('epms_user_v2');
+    if (!raw) return '';
+    const u = JSON.parse(raw);
+    return u?.id ?? '';
+  } catch {
+    return '';
+  }
 }
 
 // ─── Users ─────────────────────────────────────────────────────────────────
@@ -66,12 +81,7 @@ const SEED_USERS: User[] = [
 ];
 
 export async function listUsers(): Promise<User[]> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb.from('users').select('*').order('name');
-    if (error) throw error;
-    return (data ?? []) as User[];
-  }
+  if (useNeon) return srv.listUsersAction();
   let users = load<User[]>(KEY.users, []);
   if (users.length === 0) {
     users = SEED_USERS;
@@ -83,31 +93,28 @@ export async function listUsers(): Promise<User[]> {
 // ─── Major projects ────────────────────────────────────────────────────────
 
 export async function listMajorProjects(): Promise<MajorProject[]> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb.from('major_projects').select('*').order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data ?? []) as MajorProject[];
-  }
+  if (useNeon) return srv.listMajorProjectsAction();
   return load<MajorProject[]>(KEY.majors, []);
 }
 
-function actorId(): string | undefined {
-  if (typeof window === 'undefined') return undefined;
-  try {
-    const raw = localStorage.getItem('epms_user_v2');
-    if (!raw) return undefined;
-    const u = JSON.parse(raw);
-    return u?.id;
-  } catch {
-    return undefined;
+export async function createMajorProject(input: {
+  projectName: string;
+  description?: string;
+  ownerId: string;
+  status?: Status;
+  overallProgress?: number;
+}): Promise<MajorProject> {
+  if (useNeon) {
+    const mp = await srv.createMajorProjectAction({
+      projectName: input.projectName,
+      description: input.description,
+      ownerId: input.ownerId,
+      status: input.status,
+    });
+    await srv.logActivityAction({ userId: actorId(), action: 'create_major_project', refType: 'major_project', refId: mp.id, after: mp });
+    return mp;
   }
-}
 
-export async function createMajorProject(
-  input: Omit<MajorProject, 'id' | 'createdAt' | 'updatedAt' | 'overallProgress' | 'status'> &
-    Partial<Pick<MajorProject, 'status' | 'overallProgress'>>
-): Promise<MajorProject> {
   const now = nowIso();
   const mp: MajorProject = {
     id: rid('mp'),
@@ -119,35 +126,18 @@ export async function createMajorProject(
     createdAt: now,
     updatedAt: now,
   };
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb
-      .from('major_projects')
-      .insert({
-        project_name: mp.projectName,
-        description: mp.description,
-        owner_id: mp.ownerId,
-        status: mp.status,
-        overall_progress: mp.overallProgress,
-      })
-      .select('*')
-      .single();
-    if (error) throw error;
-    return data as MajorProject;
-  }
   const all = load<MajorProject[]>(KEY.majors, []);
   all.push(mp);
   save(KEY.majors, all);
-  await logActivity({ userId: actorId() ?? '', action: 'create_major_project', refType: 'major_project', refId: mp.id, after: mp });
+  logActivityLocal({ userId: actorId(), action: 'create_major_project', refType: 'major_project', refId: mp.id, after: mp });
   return mp;
 }
 
 export async function updateMajorProject(id: string, patch: Partial<MajorProject>): Promise<MajorProject> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb.from('major_projects').update(patch).eq('id', id).select('*').single();
-    if (error) throw error;
-    return data as MajorProject;
+  if (useNeon) {
+    const mp = await srv.updateMajorProjectAction(id, patch);
+    await srv.logActivityAction({ userId: actorId(), action: 'update_major_project', refType: 'major_project', refId: id, after: mp });
+    return mp;
   }
   const all = load<MajorProject[]>(KEY.majors, []);
   const i = all.findIndex((m) => m.id === id);
@@ -155,54 +145,49 @@ export async function updateMajorProject(id: string, patch: Partial<MajorProject
   const before = { ...all[i] };
   all[i] = { ...all[i], ...patch, updatedAt: nowIso() };
   save(KEY.majors, all);
-  await logActivity({ userId: actorId() ?? '', action: 'update_major_project', refType: 'major_project', refId: id, before, after: all[i] });
+  logActivityLocal({ userId: actorId(), action: 'update_major_project', refType: 'major_project', refId: id, before, after: all[i] });
   return all[i];
 }
 
 export async function deleteMajorProject(id: string): Promise<void> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { error } = await sb.from('major_projects').delete().eq('id', id);
-    if (error) throw error;
+  if (useNeon) {
+    await srv.deleteMajorProjectAction(id);
+    await srv.logActivityAction({ userId: actorId(), action: 'delete_major_project', refType: 'major_project', refId: id });
     return;
   }
-  save(
-    KEY.majors,
-    load<MajorProject[]>(KEY.majors, []).filter((m) => m.id !== id)
-  );
-  // cascade
+  save(KEY.majors, load<MajorProject[]>(KEY.majors, []).filter((m) => m.id !== id));
   const subs = load<SubProject[]>(KEY.subs, []);
-  const removedSubIds = subs.filter((s) => s.majorProjectId === id).map((s) => s.id);
-  save(
-    KEY.subs,
-    subs.filter((s) => s.majorProjectId !== id)
-  );
-  save(
-    KEY.stages,
-    load<StageSchedule[]>(KEY.stages, []).filter((st) => !removedSubIds.includes(st.subProjectId))
-  );
-  await logActivity({ userId: actorId() ?? '', action: 'delete_major_project', refType: 'major_project', refId: id });
+  const removed = subs.filter((s) => s.majorProjectId === id).map((s) => s.id);
+  save(KEY.subs, subs.filter((s) => s.majorProjectId !== id));
+  save(KEY.stages, load<StageSchedule[]>(KEY.stages, []).filter((st) => !removed.includes(st.subProjectId)));
+  logActivityLocal({ userId: actorId(), action: 'delete_major_project', refType: 'major_project', refId: id });
 }
 
 // ─── Sub projects ──────────────────────────────────────────────────────────
 
 export async function listSubProjects(majorProjectId?: string): Promise<SubProject[]> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    let q = sb.from('sub_projects').select('*').order('created_at', { ascending: false });
-    if (majorProjectId) q = q.eq('major_project_id', majorProjectId);
-    const { data, error } = await q;
-    if (error) throw error;
-    return (data ?? []) as SubProject[];
-  }
+  if (useNeon) return srv.listSubProjectsAction(majorProjectId);
   const all = load<SubProject[]>(KEY.subs, []);
   return majorProjectId ? all.filter((s) => s.majorProjectId === majorProjectId) : all;
 }
 
-export async function createSubProject(
-  input: Omit<SubProject, 'id' | 'createdAt' | 'updatedAt' | 'progress' | 'status' | 'actualStart' | 'actualEnd'> &
-    Partial<Pick<SubProject, 'status' | 'progress'>>
-): Promise<SubProject> {
+export async function createSubProject(input: {
+  majorProjectId: string;
+  projectName: string;
+  equipmentGroup: SubProject['equipmentGroup'];
+  source: SubProject['source'];
+  category: string;
+  picId: string;
+  plannedStart?: string;
+  plannedEnd?: string;
+  remarks?: string;
+}): Promise<SubProject> {
+  if (useNeon) {
+    const sub = await srv.createSubProjectAction(input);
+    await srv.logActivityAction({ userId: actorId(), action: 'create_sub_project', refType: 'sub_project', refId: sub.id, after: sub });
+    return sub;
+  }
+
   const now = nowIso();
   const sub: SubProject = {
     id: rid('sp'),
@@ -214,40 +199,17 @@ export async function createSubProject(
     picId: input.picId,
     plannedStart: input.plannedStart,
     plannedEnd: input.plannedEnd,
-    progress: input.progress ?? 0,
-    status: input.status ?? 'Pending',
+    progress: 0,
+    status: 'Pending',
     remarks: input.remarks,
     createdAt: now,
     updatedAt: now,
   };
-
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb
-      .from('sub_projects')
-      .insert({
-        major_project_id: sub.majorProjectId,
-        project_name: sub.projectName,
-        equipment_group: sub.equipmentGroup,
-        source: sub.source,
-        pic_id: sub.picId,
-        planned_start: sub.plannedStart,
-        planned_end: sub.plannedEnd,
-        status: sub.status,
-        progress: sub.progress,
-        remarks: sub.remarks,
-      })
-      .select('*')
-      .single();
-    if (error) throw error;
-    return data as SubProject;
-  }
-
   const all = load<SubProject[]>(KEY.subs, []);
   all.push(sub);
   save(KEY.subs, all);
-  // auto-seed empty stages for new sub-project
-  const stages: StageSchedule[] = load<StageSchedule[]>(KEY.stages, []);
+
+  const stages = load<StageSchedule[]>(KEY.stages, []);
   STAGES.forEach((name, idx) => {
     stages.push({
       id: rid('st'),
@@ -261,16 +223,15 @@ export async function createSubProject(
     });
   });
   save(KEY.stages, stages);
-  await logActivity({ userId: actorId() ?? '', action: 'create_sub_project', refType: 'sub_project', refId: sub.id, after: sub });
+  logActivityLocal({ userId: actorId(), action: 'create_sub_project', refType: 'sub_project', refId: sub.id, after: sub });
   return sub;
 }
 
 export async function updateSubProject(id: string, patch: Partial<SubProject>): Promise<SubProject> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb.from('sub_projects').update(patch).eq('id', id).select('*').single();
-    if (error) throw error;
-    return data as SubProject;
+  if (useNeon) {
+    const sub = await srv.updateSubProjectAction(id, patch);
+    await srv.logActivityAction({ userId: actorId(), action: 'update_sub_project', refType: 'sub_project', refId: id, after: sub });
+    return sub;
   }
   const all = load<SubProject[]>(KEY.subs, []);
   const i = all.findIndex((s) => s.id === id);
@@ -278,52 +239,35 @@ export async function updateSubProject(id: string, patch: Partial<SubProject>): 
   const before = { ...all[i] };
   all[i] = { ...all[i], ...patch, updatedAt: nowIso() };
   save(KEY.subs, all);
-  await logActivity({ userId: actorId() ?? '', action: 'update_sub_project', refType: 'sub_project', refId: id, before, after: all[i] });
+  logActivityLocal({ userId: actorId(), action: 'update_sub_project', refType: 'sub_project', refId: id, before, after: all[i] });
   return all[i];
 }
 
 export async function deleteSubProject(id: string): Promise<void> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { error } = await sb.from('sub_projects').delete().eq('id', id);
-    if (error) throw error;
+  if (useNeon) {
+    await srv.deleteSubProjectAction(id);
+    await srv.logActivityAction({ userId: actorId(), action: 'delete_sub_project', refType: 'sub_project', refId: id });
     return;
   }
-  save(
-    KEY.subs,
-    load<SubProject[]>(KEY.subs, []).filter((s) => s.id !== id)
-  );
-  save(
-    KEY.stages,
-    load<StageSchedule[]>(KEY.stages, []).filter((st) => st.subProjectId !== id)
-  );
-  await logActivity({ userId: actorId() ?? '', action: 'delete_sub_project', refType: 'sub_project', refId: id });
+  save(KEY.subs, load<SubProject[]>(KEY.subs, []).filter((s) => s.id !== id));
+  save(KEY.stages, load<StageSchedule[]>(KEY.stages, []).filter((st) => st.subProjectId !== id));
+  logActivityLocal({ userId: actorId(), action: 'delete_sub_project', refType: 'sub_project', refId: id });
 }
 
-// ─── Stage schedules ───────────────────────────────────────────────────────
+// ─── Stages ────────────────────────────────────────────────────────────────
 
 export async function listStages(subProjectId: string): Promise<StageSchedule[]> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb
-      .from('stage_schedules')
-      .select('*')
-      .eq('sub_project_id', subProjectId)
-      .order('stage_index');
-    if (error) throw error;
-    return (data ?? []) as StageSchedule[];
-  }
+  if (useNeon) return srv.listStagesAction(subProjectId);
   return load<StageSchedule[]>(KEY.stages, [])
     .filter((s) => s.subProjectId === subProjectId)
     .sort((a, b) => a.stageIndex - b.stageIndex);
 }
 
 export async function updateStage(id: string, patch: Partial<StageSchedule>): Promise<StageSchedule> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb.from('stage_schedules').update(patch).eq('id', id).select('*').single();
-    if (error) throw error;
-    return data as StageSchedule;
+  if (useNeon) {
+    const st = await srv.updateStageAction(id, patch);
+    await srv.logActivityAction({ userId: actorId(), action: 'update_stage', refType: 'stage', refId: id, after: st });
+    return st;
   }
   const all = load<StageSchedule[]>(KEY.stages, []);
   const i = all.findIndex((s) => s.id === id);
@@ -331,25 +275,26 @@ export async function updateStage(id: string, patch: Partial<StageSchedule>): Pr
   const before = { ...all[i] };
   all[i] = { ...all[i], ...patch };
   save(KEY.stages, all);
-  await logActivity({ userId: actorId() ?? '', action: 'update_stage', refType: 'stage', refId: id, before, after: all[i] });
+  logActivityLocal({ userId: actorId(), action: 'update_stage', refType: 'stage', refId: id, before, after: all[i] });
   return all[i];
 }
 
 // ─── Attendance ────────────────────────────────────────────────────────────
 
-export async function listAttendance(month?: { year: number; monthIndex: number }, userId?: string): Promise<AttendanceRecord[]> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    let q = sb.from('attendance_records').select('*');
-    if (userId) q = q.eq('user_id', userId);
-    if (month) {
-      const first = new Date(month.year, month.monthIndex, 1).toISOString().slice(0, 10);
-      const last = new Date(month.year, month.monthIndex + 1, 0).toISOString().slice(0, 10);
-      q = q.gte('date', first).lte('date', last);
-    }
-    const { data, error } = await q;
-    if (error) throw error;
-    return (data ?? []) as AttendanceRecord[];
+function monthBounds(month: { year: number; monthIndex: number }) {
+  const first = new Date(month.year, month.monthIndex, 1);
+  const last = new Date(month.year, month.monthIndex + 1, 0);
+  const f = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-01`;
+  const l = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+  return { from: f, to: l };
+}
+
+export async function listAttendance(
+  month?: { year: number; monthIndex: number },
+  userId?: string
+): Promise<AttendanceRecord[]> {
+  if (useNeon) {
+    return srv.listAttendanceAction(month ? monthBounds(month) : undefined, userId);
   }
   let recs = load<AttendanceRecord[]>(KEY.attendance, []);
   if (userId) recs = recs.filter((r) => r.userId === userId);
@@ -362,72 +307,37 @@ export async function listAttendance(month?: { year: number; monthIndex: number 
 }
 
 export async function upsertAttendance(rec: Omit<AttendanceRecord, 'id' | 'createdAt'>): Promise<AttendanceRecord> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb
-      .from('attendance_records')
-      .upsert(
-        {
-          user_id: rec.userId,
-          date: rec.date,
-          status: rec.status,
-          remarks: rec.remarks,
-          recorded_by: rec.recordedBy,
-        },
-        { onConflict: 'user_id,date' }
-      )
-      .select('*')
-      .single();
-    if (error) throw error;
-    return data as AttendanceRecord;
+  if (useNeon) {
+    return srv.upsertAttendanceAction({
+      userId: rec.userId,
+      date: rec.date,
+      status: rec.status,
+      remarks: rec.remarks,
+      recordedBy: rec.recordedBy,
+    });
   }
   const all = load<AttendanceRecord[]>(KEY.attendance, []);
   const i = all.findIndex((r) => r.userId === rec.userId && r.date === rec.date);
-  if (i >= 0) {
-    all[i] = { ...all[i], ...rec };
-  } else {
-    all.push({ ...rec, id: rid('att'), createdAt: nowIso() });
-  }
+  if (i >= 0) all[i] = { ...all[i], ...rec };
+  else all.push({ ...rec, id: rid('att'), createdAt: nowIso() });
   save(KEY.attendance, all);
   return all[i >= 0 ? i : all.length - 1];
 }
 
 export async function deleteAttendance(id: string): Promise<void> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { error } = await sb.from('attendance_records').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
-  save(
-    KEY.attendance,
-    load<AttendanceRecord[]>(KEY.attendance, []).filter((r) => r.id !== id)
-  );
+  if (useNeon) return srv.deleteAttendanceAction(id);
+  save(KEY.attendance, load<AttendanceRecord[]>(KEY.attendance, []).filter((r) => r.id !== id));
 }
 
 // ─── Holidays ──────────────────────────────────────────────────────────────
 
 export async function listHolidays(): Promise<Holiday[]> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb.from('holiday_calendar').select('*').order('date');
-    if (error) throw error;
-    return (data ?? []) as Holiday[];
-  }
+  if (useNeon) return srv.listHolidaysAction();
   return load<Holiday[]>(KEY.holidays, []).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export async function createHoliday(input: Omit<Holiday, 'id' | 'createdAt'>): Promise<Holiday> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb
-      .from('holiday_calendar')
-      .insert({ date: input.date, name: input.name, kind: input.kind })
-      .select('*')
-      .single();
-    if (error) throw error;
-    return data as Holiday;
-  }
+export async function createHoliday(input: { date: string; name: string; kind: HolidayKind }): Promise<Holiday> {
+  if (useNeon) return srv.createHolidayAction(input);
   const h: Holiday = { ...input, id: rid('h'), createdAt: nowIso() };
   const all = load<Holiday[]>(KEY.holidays, []);
   const i = all.findIndex((x) => x.date === input.date);
@@ -438,53 +348,36 @@ export async function createHoliday(input: Omit<Holiday, 'id' | 'createdAt'>): P
 }
 
 export async function deleteHoliday(id: string): Promise<void> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { error } = await sb.from('holiday_calendar').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
-  save(
-    KEY.holidays,
-    load<Holiday[]>(KEY.holidays, []).filter((h) => h.id !== id)
-  );
+  if (useNeon) return srv.deleteHolidayAction(id);
+  save(KEY.holidays, load<Holiday[]>(KEY.holidays, []).filter((h) => h.id !== id));
 }
 
 // ─── Notifications ─────────────────────────────────────────────────────────
 
 export async function listNotifications(userId: string): Promise<NotificationItem[]> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb
-      .from('notifications')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data ?? []) as NotificationItem[];
-  }
+  if (useNeon) return srv.listNotificationsAction(userId);
   return load<NotificationItem[]>(KEY.notifications, [])
     .filter((n) => n.userId === userId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export async function createNotification(n: Omit<NotificationItem, 'id' | 'createdAt' | 'isRead'>): Promise<NotificationItem> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb
-      .from('notifications')
-      .insert({
-        user_id: n.userId,
-        kind: n.kind,
-        title: n.title,
-        body: n.body,
-        ref_type: n.refType,
-        ref_id: n.refId,
-      })
-      .select('*')
-      .single();
-    if (error) throw error;
-    return data as NotificationItem;
+export async function createNotification(n: {
+  userId: string;
+  kind: NotificationKind;
+  title: string;
+  body?: string;
+  refType?: NotificationItem['refType'];
+  refId?: string;
+}): Promise<NotificationItem> {
+  if (useNeon) {
+    return srv.createNotificationAction({
+      userId: n.userId,
+      kind: n.kind,
+      title: n.title,
+      body: n.body,
+      refType: n.refType,
+      refId: n.refId,
+    });
   }
   const item: NotificationItem = { ...n, id: rid('nt'), isRead: false, createdAt: nowIso() };
   const all = load<NotificationItem[]>(KEY.notifications, []);
@@ -494,12 +387,7 @@ export async function createNotification(n: Omit<NotificationItem, 'id' | 'creat
 }
 
 export async function markNotificationRead(id: string): Promise<void> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { error } = await sb.from('notifications').update({ is_read: true }).eq('id', id);
-    if (error) throw error;
-    return;
-  }
+  if (useNeon) return srv.markNotificationReadAction(id);
   const all = load<NotificationItem[]>(KEY.notifications, []);
   const i = all.findIndex((n) => n.id === id);
   if (i >= 0) {
@@ -510,41 +398,25 @@ export async function markNotificationRead(id: string): Promise<void> {
 
 // ─── Activity log ──────────────────────────────────────────────────────────
 
-export async function logActivity(entry: Omit<ActivityLog, 'id' | 'createdAt'>): Promise<void> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    await sb.from('activity_logs').insert({
-      user_id: entry.userId,
-      action: entry.action,
-      ref_type: entry.refType,
-      ref_id: entry.refId,
-      before: entry.before,
-      after: entry.after,
-    });
-    return;
-  }
+function logActivityLocal(entry: Omit<ActivityLog, 'id' | 'createdAt'>) {
   const all = load<ActivityLog[]>(KEY.logs, []);
   all.push({ ...entry, id: rid('log'), createdAt: nowIso() });
   save(KEY.logs, all);
 }
 
+export async function logActivity(entry: Omit<ActivityLog, 'id' | 'createdAt'>): Promise<void> {
+  if (useNeon) return srv.logActivityAction(entry);
+  logActivityLocal(entry);
+}
+
 export async function listActivity(limit = 100): Promise<ActivityLog[]> {
-  if (supabaseEnabled) {
-    const sb = getSupabaseClient()!;
-    const { data, error } = await sb
-      .from('activity_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    if (error) throw error;
-    return (data ?? []) as ActivityLog[];
-  }
+  if (useNeon) return srv.listActivityAction(limit);
   return load<ActivityLog[]>(KEY.logs, [])
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, limit);
 }
 
-// ─── Aggregations / derived fields ─────────────────────────────────────────
+// ─── Derived helpers (unchanged) ───────────────────────────────────────────
 
 export function statusFor(
   todayIso: string,

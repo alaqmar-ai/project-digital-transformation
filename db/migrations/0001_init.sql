@@ -1,5 +1,9 @@
 -- ============================================================================
--- EPMS — Enterprise Project Monitoring System — initial schema
+-- EPMS — Enterprise Project Monitoring System — initial schema (Neon Postgres)
+--
+-- Authorization is enforced at the application layer (TypeScript role checks).
+-- No RLS — Neon doesn't ship auth.uid(); all access goes through Server Actions
+-- with the server-only DATABASE_URL.
 -- ============================================================================
 
 create extension if not exists "pgcrypto";
@@ -52,20 +56,12 @@ exception when duplicate_object then null; end $$;
 -- ─── users ──────────────────────────────────────────────────────────────────
 create table if not exists users (
   id uuid primary key default gen_random_uuid(),
-  auth_id uuid unique,                       -- Supabase auth.users.id
   username text not null unique,
   name text not null,
   email text,
   role role_enum not null default 'STAFF',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
-);
-
--- ─── categories ─────────────────────────────────────────────────────────────
-create table if not exists categories (
-  id uuid primary key default gen_random_uuid(),
-  name text not null unique,
-  created_at timestamptz not null default now()
 );
 
 -- ─── major_projects ─────────────────────────────────────────────────────────
@@ -88,7 +84,7 @@ create table if not exists sub_projects (
   project_name text not null,
   equipment_group equipment_group_enum not null,
   source source_enum not null,
-  category_id uuid references categories(id) on delete set null,
+  category text not null,
   pic_id uuid references users(id) on delete set null,
   planned_start date,
   planned_end date,

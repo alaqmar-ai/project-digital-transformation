@@ -50,6 +50,8 @@ function rid(p: string) { return `${p}_${Math.random().toString(36).slice(2, 10)
 /** Seed dummy data if needed. Safe to call repeatedly. */
 export function maybeSeed() {
   if (typeof window === 'undefined') return;
+  // When the real DB is enabled, sample data is seeded via SQL migrations.
+  if (process.env.NEXT_PUBLIC_USE_NEON === 'true') return;
   if (localStorage.getItem(SEED_KEY) === SEED_VERSION) return;
 
   // If there is any user-created data, don't overwrite — just bump the version
