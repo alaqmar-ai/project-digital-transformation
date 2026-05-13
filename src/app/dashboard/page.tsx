@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, Calendar, Users, Percent, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Calendar, Users, Percent, ArrowRight, ListChecks } from 'lucide-react';
 import {
   PieChart,
   Pie,
@@ -19,6 +19,8 @@ import {
 import { useApp } from '@/components/AppProvider';
 import PageHeader from '@/components/ui/PageHeader';
 import StatusPill from '@/components/ui/StatusPill';
+import DeadlinesList, { buildDeadlineRows } from '@/components/DeadlinesList';
+import { isAdmin } from '@/lib/types';
 import {
   listMajorProjects,
   listSubProjects,
@@ -93,6 +95,22 @@ export default function DashboardPage() {
     return Object.entries(buckets).map(([name, value]) => ({ name, value }));
   }, [subs]);
 
+  // PIC-specific deadline list (top 5 nearest open stages)
+  const myDeadlines = useMemo(
+    () =>
+      user
+        ? buildDeadlineRows({
+            stages,
+            subs,
+            majors,
+            users,
+            picId: user.id,
+            limit: 5,
+          })
+        : [],
+    [stages, subs, majors, users, user]
+  );
+
   const groupBars = useMemo(() => {
     const byGroup: Record<string, { name: string; count: number; progress: number }> = {};
     subs.forEach((s) => {
@@ -155,6 +173,35 @@ export default function DashboardPage() {
           <Kpi label="Attendance" value={`${kpi.attendancePct}%`} icon={<Percent size={18} />} tone="green" />
         </div>
       )}
+
+      {/* My next deadlines */}
+      <div className="bg-white border border-border rounded-2xl shadow-card overflow-hidden mb-6">
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-primary-light text-primary flex items-center justify-center">
+              <ListChecks size={16} />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">
+                {isAdmin(user) ? 'My next deadlines' : 'Your next deadlines'}
+              </h3>
+              <p className="text-[11px] text-text-muted">
+                {myDeadlines.length > 0
+                  ? `${myDeadlines.length} open stage${myDeadlines.length === 1 ? '' : 's'} assigned to you — nearest first`
+                  : 'Stages assigned to you and not yet completed'}
+              </p>
+            </div>
+          </div>
+          <Link href="/my-tasks" className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-medium">
+            View all <ArrowRight size={12} />
+          </Link>
+        </div>
+        <DeadlinesList
+          rows={myDeadlines}
+          emptyTitle="You're all caught up"
+          emptyHint="Stages assigned to you will appear here, sorted by nearest deadline."
+        />
+      </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">

@@ -36,6 +36,7 @@ interface NavItem {
 
 const ADMIN_NAV: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/my-tasks', label: 'My Tasks', icon: ClipboardList },
   { href: '/projects', label: 'Major Projects', icon: FolderKanban, showCount: true },
   { href: '/sub-projects', label: 'Sub Projects', icon: Layers },
   { href: '/daily-progress', label: 'Daily Progress', icon: CalendarCheck },

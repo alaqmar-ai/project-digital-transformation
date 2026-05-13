@@ -55,15 +55,9 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
         <div className="absolute -bottom-40 -right-20 w-[420px] h-[420px] rounded-full bg-white/[0.08] blur-3xl pointer-events-none" />
 
         <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-12">
-            <div className="w-11 h-11 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-sm flex items-center justify-center">
-              <span className="font-bold text-base tracking-tight">EP</span>
-            </div>
-            <div>
-              <p className="text-sm font-semibold tracking-tight">EPMS</p>
-              <p className="text-[11px] text-white/70">Project Monitoring System</p>
-            </div>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70 mb-10">
+            Project Monitoring System
+          </p>
 
           <h1 className="text-3xl xl:text-4xl font-bold leading-[1.1] max-w-md tracking-tight">
             Track every project, every stage, every deadline — across the entire plant.
@@ -83,98 +77,104 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
       </aside>
 
       {/* ── Sign-in form ──────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-center p-6 md:p-10">
-        <div className="w-full max-w-sm">
-          <div className="lg:hidden mb-8 text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-primary text-white shadow-card mb-3">
-              <span className="font-bold text-base tracking-tight">EP</span>
-            </div>
-            <h1 className="text-xl font-bold text-text-primary tracking-tight">EPMS</h1>
-            <p className="text-xs text-text-muted">Enterprise Project Monitoring</p>
-          </div>
-
-          <div className="mb-7">
-            <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Sign in</p>
-            <h2 className="text-2xl font-bold text-text-primary tracking-tight">Welcome back</h2>
-            <p className="text-sm text-text-muted mt-1.5">Enter your credentials to access the dashboard.</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="login-username" className="block text-xs font-semibold text-text-secondary mb-1.5">
-                Username
-              </label>
-              <div className="relative">
-                <UserIcon size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                <input
-                  id="login-username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="e.g. admin"
-                  className="input-styled pl-9"
-                  autoComplete="username"
-                />
-              </div>
+      <div className="flex flex-col items-center justify-between p-6 md:p-10">
+        <div className="flex-1 w-full max-w-sm flex items-center">
+          <div className="w-full">
+            <div className="mb-7">
+              <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Sign in</p>
+              <h2 className="text-2xl font-bold text-text-primary tracking-tight">Welcome back</h2>
+              <p className="text-sm text-text-muted mt-1.5">Enter your credentials to access the dashboard.</p>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="login-password" className="text-xs font-semibold text-text-secondary">
-                  Password
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="login-username" className="block text-xs font-semibold text-text-secondary mb-1.5">
+                  Username
                 </label>
+                <div className="relative">
+                  <UserIcon size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                  <input
+                    id="login-username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Your username"
+                    className="input-styled pl-11"
+                    autoComplete="username"
+                  />
+                </div>
               </div>
-              <div className="relative">
-                <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                <input
-                  id="login-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="input-styled pl-9"
-                  autoComplete="current-password"
-                />
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label htmlFor="login-password" className="text-xs font-semibold text-text-secondary">
+                    Password
+                  </label>
+                </div>
+                <div className="relative">
+                  <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                  <input
+                    id="login-password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Your password"
+                    className="input-styled pl-11"
+                    autoComplete="current-password"
+                  />
+                </div>
               </div>
-            </div>
 
-            {error && (
-              <div className="text-xs text-danger bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>
-            )}
+              {error && (
+                <div className="text-xs text-danger bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>
+              )}
 
-            <button type="submit" disabled={loading} className="btn-primary w-full inline-flex items-center justify-center gap-2 py-2.5">
-              {loading && <Loader2 size={16} className="animate-spin" />}
-              Sign in
-            </button>
-          </form>
-
-          <div className="mt-7 pt-5 border-t border-border">
-            <p className="text-[11px] uppercase tracking-wider font-semibold text-text-muted mb-2.5">Demo accounts</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => fillDemo('admin')}
-                className="text-left rounded-xl border border-border bg-white px-3 py-2.5 hover:border-primary/40 hover:bg-primary-light/40 transition-colors"
-              >
-                <p className="text-[11px] uppercase tracking-wider text-primary font-semibold">Admin</p>
-                <p className="text-xs font-mono text-text-primary mt-0.5">admin / admin</p>
+              <button type="submit" disabled={loading} className="btn-primary w-full inline-flex items-center justify-center gap-2 py-2.5">
+                {loading && <Loader2 size={16} className="animate-spin" />}
+                Sign in
               </button>
-              <button
-                type="button"
-                onClick={() => fillDemo('staff')}
-                className="text-left rounded-xl border border-border bg-white px-3 py-2.5 hover:border-primary/40 hover:bg-primary-light/40 transition-colors"
-              >
-                <p className="text-[11px] uppercase tracking-wider text-text-secondary font-semibold">Staff</p>
-                <p className="text-xs font-mono text-text-primary mt-0.5">staff / staff</p>
-              </button>
+            </form>
+
+            <div className="mt-7 pt-5 border-t border-border">
+              <p className="text-[11px] uppercase tracking-wider font-semibold text-text-muted mb-2.5">Demo accounts</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => fillDemo('admin')}
+                  className="text-left rounded-xl border border-border bg-white px-3 py-2.5 hover:border-primary/40 hover:bg-primary-light/40 transition-colors"
+                >
+                  <p className="text-[11px] uppercase tracking-wider text-primary font-semibold">Admin</p>
+                  <p className="text-xs font-mono text-text-primary mt-0.5">admin / admin</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fillDemo('staff')}
+                  className="text-left rounded-xl border border-border bg-white px-3 py-2.5 hover:border-primary/40 hover:bg-primary-light/40 transition-colors"
+                >
+                  <p className="text-[11px] uppercase tracking-wider text-text-secondary font-semibold">Staff</p>
+                  <p className="text-xs font-mono text-text-primary mt-0.5">staff / staff</p>
+                </button>
+              </div>
+              <p className="text-[10.5px] text-text-muted mt-3">
+                Click a card to autofill, then press Sign in.
+              </p>
             </div>
-            <p className="text-[10.5px] text-text-muted mt-3">
-              Click a card to autofill, then press Sign in.
-            </p>
           </div>
-
-          <p className="text-center text-[11px] text-text-muted mt-7">v1.0 — EPMS</p>
         </div>
+
+        <footer className="w-full max-w-sm pt-6 text-center">
+          <p className="text-[11px] text-text-muted">
+            Developed by{' '}
+            <a
+              href="https://alaqmar.cloud"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-text-secondary hover:text-primary transition-colors"
+            >
+              alaqmar.cloud
+            </a>
+          </p>
+        </footer>
       </div>
     </div>
   );

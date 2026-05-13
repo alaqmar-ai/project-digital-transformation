@@ -1,113 +1,163 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Users as UsersIcon } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import PageHeader from '@/components/ui/PageHeader';
-import StatusPill from '@/components/ui/StatusPill';
-import { listSubProjects, listStages, listMajorProjects } from '@/lib/data/store';
-import type { StageSchedule, SubProject, MajorProject } from '@/lib/types';
-import { deriveStageStatus } from '@/lib/status';
-
-interface Row {
-  stage: StageSchedule;
-  sub: SubProject;
-  major?: MajorProject;
-}
+import DeadlinesList, { buildDeadlineRows, type DeadlineRow } from '@/components/DeadlinesList';
+import {
+  listSubProjects,
+  listStages,
+  listMajorProjects,
+  listUsers,
+} from '@/lib/data/store';
+import type { StageSchedule, SubProject, MajorProject, User } from '@/lib/types';
+import { isAdmin } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 export default function MyTasksPage() {
   const { user } = useApp();
-  const [rows, setRows] = useState<Row[]>([]);
+  const [subs, setSubs] = useState<SubProject[]>([]);
+  const [majors, setMajors] = useState<MajorProject[]>([]);
+  const [stages, setStages] = useState<StageSchedule[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<'mine' | 'all'>('mine');
 
   useEffect(() => {
-    if (!user) return;
     (async () => {
       setLoading(true);
-      const [allSubs, majors] = await Promise.all([listSubProjects(), listMajorProjects()]);
-      const mine = allSubs.filter((s) => s.picId === user.id);
-      const majorById = new Map(majors.map((m) => [m.id, m]));
-      const collected: Row[] = [];
-      for (const sub of mine) {
-        const stages = await listStages(sub.id);
-        stages.forEach((st) =>
-          collected.push({ stage: st, sub, major: majorById.get(sub.majorProjectId) })
-        );
-      }
-      setRows(collected);
+      const [sp, mp, us] = await Promise.all([listSubProjects(), listMajorProjects(), listUsers()]);
+      setSubs(sp);
+      setMajors(mp);
+      setUsers(us);
+      const all: StageSchedule[] = [];
+      for (const s of sp) all.push(...(await listStages(s.id)));
+      setStages(all);
       setLoading(false);
     })();
-  }, [user]);
+  }, []);
 
-  const open = useMemo(
-    () => rows.filter((r) => r.stage.status !== 'Completed' && r.stage.status !== 'Cancelled'),
-    [rows]
+  const mineRows: DeadlineRow[] = useMemo(
+    () => (user ? buildDeadlineRows({ stages, subs, majors, users, picId: user.id }) : []),
+    [stages, subs, majors, users, user]
   );
+
+  const allRows: DeadlineRow[] = useMemo(
+    () => buildDeadlineRows({ stages, subs, majors, users }),
+    [stages, subs, majors, users]
+  );
+
+  const activeRows = view === 'mine' ? mineRows : allRows;
 
   return (
     <div className="p-6 md:p-10 max-w-content mx-auto">
-      <PageHeader title="My Tasks" subtitle={`Stages assigned to ${user?.name ?? 'you'}`} />
+      <PageHeader
+        title={view === 'mine' ? 'My Tasks' : 'All Tasks — Master List'}
+        subtitle={
+          view === 'mine'
+            ? `Open stages assigned to ${user?.name ?? 'you'} — nearest deadline first`
+            : 'Every open stage across the plant — nearest deadline first'
+        }
+        action={
+          isAdmin(user) && (
+            <div className="inline-flex rounded-xl border border-border bg-white p-1 shadow-card">
+              <ToggleButton active={view === 'mine'} onClick={() => setView('mine')} icon={<ClipboardList size={14} />} count={mineRows.length}>
+                My tasks
+              </ToggleButton>
+              <ToggleButton active={view === 'all'} onClick={() => setView('all')} icon={<UsersIcon size={14} />} count={allRows.length}>
+                All tasks
+              </ToggleButton>
+            </div>
+          )
+        }
+      />
 
-      {loading ? (
-        <div className="grid gap-3">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="skeleton h-16" />
-          ))}
-        </div>
-      ) : open.length === 0 ? (
-        <div className="bg-white border border-border rounded-2xl p-10 text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary-light text-primary mb-3">
-            <ClipboardList size={22} />
+      {/* Counts pill row */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <CountPill label="Open" value={activeRows.length} tone="blue" />
+        <CountPill label="Overdue" value={activeRows.filter((r) => (r.stage.planEnd ?? '') < todayIso()).length} tone="red" />
+        <CountPill label="Due this week" value={activeRows.filter((r) => withinDays(r.stage.planEnd, 7)).length} tone="amber" />
+      </div>
+
+      <div className="bg-white border border-border rounded-2xl shadow-card overflow-hidden">
+        {loading ? (
+          <div className="p-5 space-y-2">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="skeleton h-16" />
+            ))}
           </div>
-          <p className="text-sm font-medium text-text-primary">No open tasks</p>
-          <p className="text-xs text-text-muted mt-1">Sub-projects assigned to you will populate this list.</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto data-table">
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th>Stage</th>
-                <th>Sub Project</th>
-                <th>Major Project</th>
-                <th>Plan End</th>
-                <th>Status</th>
-                <th>Progress</th>
-              </tr>
-            </thead>
-            <tbody>
-              {open.map((r) => {
-                const derived = deriveStageStatus({
-                  status: r.stage.status,
-                  planEnd: r.stage.planEnd,
-                  actualEnd: r.stage.actualEnd,
-                });
-                return (
-                  <tr key={r.stage.id}>
-                    <td className="font-medium">
-                      {r.stage.stageIndex + 1}. {r.stage.stageName}
-                    </td>
-                    <td>
-                      <Link href={`/sub-projects/${r.sub.id}`} className="text-primary hover:underline">
-                        {r.sub.projectName}
-                      </Link>
-                    </td>
-                    <td className="text-text-secondary">{r.major?.projectName ?? '—'}</td>
-                    <td className="font-mono text-xs">{r.stage.planEnd ?? '—'}</td>
-                    <td>
-                      <StatusPill status={derived} />
-                    </td>
-                    <td>
-                      <span className="font-mono text-xs text-text-secondary">{Math.round(r.stage.progress ?? 0)}%</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+        ) : (
+          <DeadlinesList
+            rows={activeRows}
+            showPic={view === 'all'}
+            emptyTitle={view === 'mine' ? "You're all caught up" : 'No open stages anywhere'}
+            emptyHint={view === 'mine' ? 'Sub-projects assigned to you will populate this list.' : 'Every stage is either Completed or Cancelled.'}
+          />
+        )}
+      </div>
     </div>
   );
+}
+
+function ToggleButton({
+  active,
+  onClick,
+  children,
+  icon,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  icon: React.ReactNode;
+  count: number;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors',
+        active ? 'bg-primary text-white shadow-card' : 'text-text-secondary hover:bg-elevated'
+      )}
+    >
+      {icon}
+      <span>{children}</span>
+      <span
+        className={cn(
+          'inline-block min-w-[20px] px-1.5 rounded-md text-[10px] font-mono',
+          active ? 'bg-white/20 text-white' : 'bg-elevated text-text-muted'
+        )}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function CountPill({ label, value, tone }: { label: string; value: number; tone: 'blue' | 'red' | 'amber' }) {
+  const map = {
+    blue: 'bg-blue-50 text-primary border-blue-100',
+    red: 'bg-red-50 text-danger border-red-100',
+    amber: 'bg-amber-50 text-amber-700 border-amber-100',
+  };
+  return (
+    <div className={cn('inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold', map[tone])}>
+      <span>{label}</span>
+      <span className="font-mono font-bold">{value}</span>
+    </div>
+  );
+}
+
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function withinDays(date: string | undefined, n: number) {
+  if (!date) return false;
+  const t = new Date(todayIso());
+  const d = new Date(date);
+  const diff = Math.round((d.getTime() - t.getTime()) / 86400000);
+  return diff >= 0 && diff <= n;
 }
