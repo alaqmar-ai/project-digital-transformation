@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, ListChecks } from 'lucide-react';
+import { ArrowRight, ListChecks, FolderKanban } from 'lucide-react';
 import {
   PieChart,
   Pie,
@@ -101,6 +101,22 @@ export default function DashboardPage() {
     return majors.filter((m) => ids.has(m.id));
   }, [admin, majors, subs]);
 
+  // Per-major roll-up of sub-project counts + stage delays for the progress card.
+  const majorStats = useMemo(() => {
+    const byMajor: Record<string, { subs: number; completed: number; delayed: number }> = {};
+    subs.forEach((s) => {
+      const b = (byMajor[s.majorProjectId] = byMajor[s.majorProjectId] ?? {
+        subs: 0,
+        completed: 0,
+        delayed: 0,
+      });
+      b.subs++;
+      if (s.status === 'Completed') b.completed++;
+      if (s.status === 'Delayed') b.delayed++;
+    });
+    return byMajor;
+  }, [subs]);
+
   return (
     <div className="p-6 md:p-10 max-w-content mx-auto">
       <PageHeader title={`Welcome, ${user?.name?.split(' ')[0] ?? 'User'}`} subtitle={formatFullDate(new Date())} />
@@ -175,6 +191,63 @@ export default function DashboardPage() {
           )}
         </ChartCard>
       </div>
+
+      {/* Major projects progress (admin only) */}
+      {admin && visibleMajors.length > 0 && (
+        <div className="bg-white border border-border rounded-2xl shadow-card overflow-hidden mb-6">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-primary-light text-primary flex items-center justify-center">
+                <FolderKanban size={16} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary">Major projects progress</h3>
+                <p className="text-[11px] text-text-muted">Roll-up of every major project across the plant</p>
+              </div>
+            </div>
+            <Link href="/projects" className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-medium">
+              View all <ArrowRight size={12} />
+            </Link>
+          </div>
+          <ul className="divide-y divide-border">
+            {visibleMajors.map((m) => {
+              const stat = majorStats[m.id] ?? { subs: 0, completed: 0, delayed: 0 };
+              const pct = Math.round(m.overallProgress);
+              return (
+                <li key={m.id}>
+                  <Link
+                    href={`/sub-projects?major=${m.id}`}
+                    className="block px-5 py-3.5 hover:bg-elevated transition-colors"
+                  >
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[200px]">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-semibold text-text-primary truncate">{m.projectName}</p>
+                          <StatusPill status={m.status} />
+                        </div>
+                        <p className="text-[11px] text-text-muted mt-0.5">
+                          {stat.subs} sub-project{stat.subs === 1 ? '' : 's'}
+                          {stat.completed > 0 && <> · {stat.completed} completed</>}
+                          {stat.delayed > 0 && <> · <span className="text-danger font-semibold">{stat.delayed} delayed</span></>}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0 w-full sm:w-auto">
+                        <div className="w-40 sm:w-48 h-2 rounded-full bg-elevated overflow-hidden">
+                          <div
+                            className={`h-full ${stat.delayed > 0 ? 'bg-amber-500' : 'bg-primary'}`}
+                            style={{ width: `${Math.min(100, pct)}%` }}
+                          />
+                        </div>
+                        <span className="text-sm font-mono font-bold text-text-primary w-12 text-right">{pct}%</span>
+                      </div>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {/* Recent major projects */}
       <div className="bg-white border border-border rounded-2xl shadow-card overflow-hidden">

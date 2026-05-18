@@ -452,6 +452,8 @@ function MarkTodayPanel({ users, holidays, onChanged }: MarkTodayPanelProps) {
   const [rows, setRows] = useState<Record<string, { status: string; remarks: string; existingId?: string }>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState<string>('');
 
   useEffect(() => {
     (async () => {
@@ -499,6 +501,68 @@ function MarkTodayPanel({ users, holidays, onChanged }: MarkTodayPanelProps) {
     }
   };
 
+  const fillAll = (status: string) => {
+    setRows((prev) => {
+      const next = { ...prev };
+      users.forEach((u) => {
+        next[u.id] = { ...next[u.id], status };
+      });
+      return next;
+    });
+  };
+
+  const saveAll = async () => {
+    if (!user) return;
+    const targets = users.filter((u) => rows[u.id]?.status);
+    if (targets.length === 0) {
+      addToast('error', 'Choose a status for at least one staff member first.');
+      return;
+    }
+    setBulkBusy(true);
+    let ok = 0;
+    let fail = 0;
+    for (const u of targets) {
+      const row = rows[u.id];
+      try {
+        await upsertAttendance({
+          userId: u.id,
+          date: todayIsoStr,
+          status: row.status as AttendanceRecord['status'],
+          remarks: row.remarks.trim() || undefined,
+          recordedBy: user.id,
+        });
+        ok++;
+      } catch {
+        fail++;
+      }
+    }
+    if (ok > 0) addToast('success', `Saved ${ok} attendance record${ok === 1 ? '' : 's'}${fail > 0 ? ` (${fail} failed)` : ''}`);
+    if (ok === 0 && fail > 0) addToast('error', `Failed to save ${fail} record${fail === 1 ? '' : 's'}`);
+    onChanged();
+    // Refresh local state so existingId is populated
+    const recs = await listAttendance({
+      year: todayDate.getFullYear(),
+      monthIndex: todayDate.getMonth(),
+    });
+    const byUser = new Map<string, AttendanceRecord>();
+    recs.filter((r) => r.date === todayIsoStr).forEach((r) => byUser.set(r.userId, r));
+    setRows((prev) => {
+      const next = { ...prev };
+      users.forEach((u) => {
+        const existing = byUser.get(u.id);
+        if (existing) {
+          next[u.id] = {
+            status: existing.status,
+            remarks: existing.remarks ?? '',
+            existingId: existing.id,
+          };
+        }
+      });
+      return next;
+    });
+    setBulkBusy(false);
+  };
+
   const clear = async (uid: string) => {
     const row = rows[uid];
     if (!row?.existingId) return;
@@ -515,14 +579,47 @@ function MarkTodayPanel({ users, holidays, onChanged }: MarkTodayPanelProps) {
     }
   };
 
+  const filledCount = users.filter((u) => rows[u.id]?.status).length;
+
   return (
     <div className="bg-white border border-border rounded-2xl shadow-card overflow-hidden">
-      <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-wrap gap-2">
+      <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="text-sm font-semibold text-text-primary">Mark today - {formatDate(todayIsoStr)}</h3>
           <p className="text-[11px] text-text-muted mt-0.5">
-            {isWeekend ? 'Weekend - only "Weekend Job" is allowed.' : isHoliday ? 'Public holiday - only "Holiday Job" is allowed.' : 'Choose a status for each staff member.'}
+            {isWeekend ? 'Weekend - only "Weekend Job" is allowed.' : isHoliday ? 'Public holiday - only "Holiday Job" is allowed.' : 'Choose a status for each staff member, or use the bulk controls.'}
           </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            className="select-styled py-1.5 text-xs"
+            value={bulkStatus}
+            onChange={(e) => {
+              const v = e.target.value;
+              setBulkStatus(v);
+              if (v) fillAll(v);
+            }}
+            disabled={bulkBusy}
+          >
+            <option value="">Quick fill all...</option>
+            {options.map((o) => (
+              <option key={o} value={o}>
+                Set all to {o}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={saveAll}
+            disabled={bulkBusy || filledCount === 0}
+            className={cn(
+              'inline-flex items-center text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-colors',
+              filledCount > 0 && !bulkBusy
+                ? 'bg-primary text-white hover:bg-blue-700'
+                : 'bg-elevated text-text-muted cursor-not-allowed'
+            )}
+          >
+            {bulkBusy ? 'Saving all...' : `Save all (${filledCount})`}
+          </button>
         </div>
       </div>
 
