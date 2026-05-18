@@ -179,7 +179,7 @@ input[type="date"] {
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }
 
-/* Input — declared inside @layer components so Tailwind padding utilities
+/* Input - declared inside @layer components so Tailwind padding utilities
    can override the default 12px horizontal padding. */
 @layer components {
   .input-styled {

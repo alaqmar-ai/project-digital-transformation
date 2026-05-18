@@ -122,7 +122,7 @@ export default function TargetsPage() {
       {/* Target Cards */}
       {targets.length === 0 && !projectsLoading ? (
         <div className="text-center py-20 text-text-muted text-sm">
-          No active targets today — all on track
+          No active targets today - all on track
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

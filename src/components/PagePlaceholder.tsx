@@ -22,7 +22,7 @@ export default function PagePlaceholder({
         <h2 className="text-lg font-semibold text-text-primary">Coming soon</h2>
         <p className="text-sm text-text-muted mt-2 max-w-md">
           This module will be wired up in {phase ?? 'an upcoming phase'}. The foundation, theme,
-          and RBAC are in place — content modules follow.
+          and RBAC are in place - content modules follow.
         </p>
       </div>
     </div>

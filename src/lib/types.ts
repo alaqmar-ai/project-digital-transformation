@@ -50,7 +50,7 @@ export interface MajorProject {
   description?: string;
   ownerId: string; // user id
   status: Status;
-  overallProgress: number; // 0..100 — auto from sub-projects
+  overallProgress: number; // 0..100 - auto from sub-projects
   createdAt: string;
   updatedAt: string;
 }
@@ -67,7 +67,7 @@ export interface SubProject {
   plannedEnd?: string;
   actualStart?: string;
   actualEnd?: string;
-  progress: number; // 0..100 — auto from stages
+  progress: number; // 0..100 - auto from stages
   status: Status;
   remarks?: string;
   createdAt: string;

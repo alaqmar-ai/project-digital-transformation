@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * EPMS — migration runner. Applies every db/migrations/*.sql to $DATABASE_URL.
+ * EPMS - migration runner. Applies every db/migrations/*.sql to $DATABASE_URL.
  *
  * Uses `pg` (the original Postgres client) because it supports multi-statement
- * SQL bodies with dollar-quoted blocks in a single round-trip — which Neon's
+ * SQL bodies with dollar-quoted blocks in a single round-trip - which Neon's
  * HTTP tagged-template client does not. `pg` is a devDependency, so the
  * application bundle stays unaffected.
  *

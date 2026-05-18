@@ -1,5 +1,5 @@
 /**
- * Data adapter — Neon Postgres (via Server Actions) or localStorage fallback.
+ * Data adapter - Neon Postgres (via Server Actions) or localStorage fallback.
  *
  * When NEXT_PUBLIC_USE_NEON=true, every call goes through a typed Server Action
  * that holds DATABASE_URL server-side. Otherwise the store persists to

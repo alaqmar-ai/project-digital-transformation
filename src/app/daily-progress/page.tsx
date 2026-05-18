@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Calendar, AlertCircle, CheckCircle2, Circle, Clock, User as UserIcon } from 'lucide-react';
+import { Calendar, AlertCircle, CheckCircle2, Circle, Clock, User as UserIcon, GripVertical } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import PageHeader from '@/components/ui/PageHeader';
 import { useUsers } from '@/hooks/useUsers';
@@ -32,12 +32,14 @@ export default function DailyProgressPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   const admin = isAdmin(user);
 
   const userName = useMemo(() => {
     const map = new Map(users.map((u) => [u.id, u.name]));
-    return (id: string) => map.get(id) ?? '—';
+    return (id: string) => map.get(id) ?? '-';
   }, [users]);
 
   const load = async () => {
@@ -47,20 +49,17 @@ export default function DailyProgressPage() {
     const [subs, majors] = await Promise.all([listSubProjects(), listMajorProjects()]);
     const majorById = new Map(majors.map((m) => [m.id, m]));
     const scopedSubs = admin ? subs : subs.filter((s) => s.picId === user?.id);
-    const subById = new Map(scopedSubs.map((s) => [s.id, s]));
     const collected: Row[] = [];
     for (const sub of scopedSubs) {
       const stages = await listStages(sub.id);
       for (const s of stages) {
         if (s.status === 'Completed' || s.status === 'Cancelled') continue;
         if (!s.planEnd) continue;
-        // include if deadline is today, future ≤ horizon, or already late
         if (s.planEnd <= horizon) {
           collected.push({ stage: s, sub, major: majorById.get(sub.majorProjectId) });
         }
       }
     }
-    void subById;
     setRows(collected);
     setLoading(false);
   };
@@ -101,20 +100,17 @@ export default function DailyProgressPage() {
         progress: completed ? 100 : (r.stage.progress ?? 0),
       };
       await updateStage(r.stage.id, patch);
-      // refresh local
       const updated = rows.map((row) =>
         row.stage.id === r.stage.id ? { ...row, stage: { ...row.stage, ...patch } } : row
       );
       setRows(updated);
 
-      // Recompute sub progress
       const sameSub = updated.filter((row) => row.sub.id === r.sub.id).map((row) => row.stage);
       const allSubStages = await listStages(r.sub.id);
       const merged = allSubStages.map((s) => sameSub.find((x) => x.id === s.id) ?? s);
       const newProgress = progressOfSubProject(merged);
       await updateSubProject(r.sub.id, { progress: newProgress });
       addToast('success', completed ? 'Marked complete' : 'Reopened');
-      // remove completed rows from board
       if (completed) {
         setRows((prev) => prev.filter((row) => row.stage.id !== r.stage.id));
       }
@@ -125,11 +121,47 @@ export default function DailyProgressPage() {
     }
   };
 
+  const reschedule = async (r: Row, targetIso: string) => {
+    if (r.stage.planEnd === targetIso) return;
+    const prev = rows;
+    // Optimistic update
+    const optimistic = rows.map((row) =>
+      row.stage.id === r.stage.id
+        ? { ...row, stage: { ...row.stage, planEnd: targetIso } }
+        : row
+    );
+    setRows(optimistic);
+    setSaving(r.stage.id);
+    try {
+      const nextStatus = deriveStageStatus({
+        status: r.stage.status === 'Pending' ? 'Pending' : r.stage.status,
+        planEnd: targetIso,
+        actualEnd: r.stage.actualEnd,
+      });
+      await updateStage(r.stage.id, { planEnd: targetIso, status: nextStatus });
+      addToast('success', `Moved to ${formatDate(targetIso)}`);
+    } catch (e) {
+      setRows(prev);
+      addToast('error', (e as Error).message);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleDrop = (targetIso: string) => {
+    if (!dragId) return;
+    const row = rows.find((r) => r.stage.id === dragId);
+    setDragId(null);
+    setDropTarget(null);
+    if (!row) return;
+    reschedule(row, targetIso);
+  };
+
   return (
     <div className="p-6 md:p-10 max-w-content mx-auto">
       <PageHeader
         title="Daily Progress"
-        subtitle={`Open stages — next ${COLUMN_DAYS} days · ${formatDate(today)}`}
+        subtitle={`Drag a card to reschedule. Next ${COLUMN_DAYS} days · ${formatDate(today)}`}
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
@@ -148,6 +180,7 @@ export default function DailyProgressPage() {
         <>
           {overdueRows.length > 0 && (
             <DayColumn
+              iso="overdue"
               title="Overdue"
               subtitle={`${overdueRows.length} item${overdueRows.length === 1 ? '' : 's'} past deadline`}
               tone="red"
@@ -157,6 +190,13 @@ export default function DailyProgressPage() {
               onToggle={toggleStage}
               showDate
               wide
+              dragId={dragId}
+              dropTarget={dropTarget}
+              onDragStart={setDragId}
+              onDragEnd={() => { setDragId(null); setDropTarget(null); }}
+              onDragOver={setDropTarget}
+              onDrop={handleDrop}
+              droppable={false}
             />
           )}
 
@@ -164,6 +204,7 @@ export default function DailyProgressPage() {
             {columns.map((c, i) => (
               <DayColumn
                 key={c.iso}
+                iso={c.iso}
                 title={dayLabel(c.iso, i)}
                 subtitle={formatDate(c.iso)}
                 tone={i === 0 ? 'blue' : 'slate'}
@@ -171,6 +212,13 @@ export default function DailyProgressPage() {
                 userName={userName}
                 saving={saving}
                 onToggle={toggleStage}
+                dragId={dragId}
+                dropTarget={dropTarget}
+                onDragStart={setDragId}
+                onDragEnd={() => { setDragId(null); setDropTarget(null); }}
+                onDragOver={setDropTarget}
+                onDrop={handleDrop}
+                droppable
               />
             ))}
           </div>
@@ -180,17 +228,8 @@ export default function DailyProgressPage() {
   );
 }
 
-function DayColumn({
-  title,
-  subtitle,
-  tone,
-  rows,
-  userName,
-  saving,
-  onToggle,
-  showDate = false,
-  wide = false,
-}: {
+interface ColumnProps {
+  iso: string;
   title: string;
   subtitle?: string;
   tone: 'blue' | 'red' | 'slate' | 'green';
@@ -200,7 +239,34 @@ function DayColumn({
   onToggle: (r: Row, completed: boolean) => void;
   showDate?: boolean;
   wide?: boolean;
-}) {
+  dragId: string | null;
+  dropTarget: string | null;
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
+  onDragOver: (iso: string | null) => void;
+  onDrop: (iso: string) => void;
+  droppable?: boolean;
+}
+
+function DayColumn({
+  iso,
+  title,
+  subtitle,
+  tone,
+  rows,
+  userName,
+  saving,
+  onToggle,
+  showDate = false,
+  wide = false,
+  dragId,
+  dropTarget,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
+  droppable = false,
+}: ColumnProps) {
   const toneMap = {
     blue: 'border-blue-200 bg-blue-50/40',
     red: 'border-red-200 bg-red-50/40',
@@ -213,8 +279,32 @@ function DayColumn({
     slate: 'text-text-secondary',
     green: 'text-emerald-700',
   };
+
+  const isDropping = droppable && dropTarget === iso && dragId !== null;
+
   return (
-    <div className={cn('rounded-2xl border p-3 flex flex-col gap-2', toneMap[tone], wide && 'mb-2')}>
+    <div
+      onDragOver={(e) => {
+        if (!droppable || !dragId) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (dropTarget !== iso) onDragOver(iso);
+      }}
+      onDragLeave={() => {
+        if (droppable && dropTarget === iso) onDragOver(null);
+      }}
+      onDrop={(e) => {
+        if (!droppable) return;
+        e.preventDefault();
+        onDrop(iso);
+      }}
+      className={cn(
+        'rounded-2xl border p-3 flex flex-col gap-2 transition-all',
+        toneMap[tone],
+        wide && 'mb-2',
+        isDropping && 'ring-2 ring-primary ring-offset-1 bg-primary-light/40 scale-[1.01]'
+      )}
+    >
       <div className="px-1 pb-2 border-b border-border/60">
         <div className="flex items-center justify-between">
           <span className={cn('text-xs font-bold uppercase tracking-wide', titleTone[tone])}>{title}</span>
@@ -224,7 +314,9 @@ function DayColumn({
       </div>
 
       {rows.length === 0 ? (
-        <p className="text-[11px] text-text-muted italic py-3 px-1">Nothing scheduled.</p>
+        <p className={cn('text-[11px] text-text-muted italic py-3 px-1', isDropping && 'text-primary not-italic font-semibold')}>
+          {isDropping ? 'Drop to reschedule' : 'Nothing scheduled.'}
+        </p>
       ) : (
         <div className={cn('flex flex-col gap-2', wide && 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2')}>
           {rows.map((r) => (
@@ -235,6 +327,9 @@ function DayColumn({
               saving={saving === r.stage.id}
               onToggle={onToggle}
               showDate={showDate}
+              isDragging={dragId === r.stage.id}
+              onDragStart={() => onDragStart(r.stage.id)}
+              onDragEnd={onDragEnd}
             />
           ))}
         </div>
@@ -249,18 +344,36 @@ function TaskCard({
   saving,
   onToggle,
   showDate,
+  isDragging,
+  onDragStart,
+  onDragEnd,
 }: {
   r: Row;
   userName: (id: string) => string;
   saving: boolean;
   onToggle: (r: Row, completed: boolean) => void;
   showDate?: boolean;
+  isDragging: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }) {
   const completed = r.stage.status === 'Completed';
   const overdue = !completed && (r.stage.planEnd ?? '') < todayIso();
 
   return (
-    <div className="group bg-white border border-border rounded-xl p-2.5 shadow-card hover:shadow-elevated transition-all">
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', r.stage.id);
+        onDragStart();
+      }}
+      onDragEnd={onDragEnd}
+      className={cn(
+        'group bg-white border border-border rounded-xl p-2.5 shadow-card hover:shadow-elevated transition-all cursor-grab active:cursor-grabbing',
+        isDragging && 'opacity-40 ring-2 ring-primary'
+      )}
+    >
       <div className="flex items-start gap-2">
         <button
           onClick={() => onToggle(r, !completed)}
@@ -274,15 +387,18 @@ function TaskCard({
           {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
         </button>
         <div className="flex-1 min-w-0">
-          <Link
-            href={`/sub-projects/${r.sub.id}`}
-            className={cn(
-              'text-[13px] font-semibold text-text-primary leading-tight line-clamp-2 hover:text-primary',
-              completed && 'line-through text-text-muted'
-            )}
-          >
-            {r.stage.stageIndex + 1}. {r.stage.stageName}
-          </Link>
+          <div className="flex items-start justify-between gap-1">
+            <Link
+              href={`/sub-projects/${r.sub.id}`}
+              className={cn(
+                'text-[13px] font-semibold text-text-primary leading-tight line-clamp-2 hover:text-primary',
+                completed && 'line-through text-text-muted'
+              )}
+            >
+              {r.stage.stageIndex + 1}. {r.stage.stageName}
+            </Link>
+            <GripVertical size={12} className="text-text-muted/60 flex-shrink-0 mt-0.5" aria-hidden />
+          </div>
           <p className="text-[11px] text-text-muted mt-0.5 truncate">{r.sub.projectName}</p>
           {r.major && (
             <p className="text-[10px] text-text-muted mt-0.5 truncate">{r.major.projectName}</p>

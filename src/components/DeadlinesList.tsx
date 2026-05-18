@@ -91,10 +91,10 @@ export default function DeadlinesList({ rows, showPic = false, emptyTitle, empty
                 <p className="text-sm font-semibold text-text-primary truncate">
                   <span className="text-text-muted font-normal mr-2">{r.stage.stageIndex + 1}.</span>
                   {r.stage.stageName}{' '}
-                  <span className="text-text-secondary font-normal">— {r.sub.projectName}</span>
+                  <span className="text-text-secondary font-normal">- {r.sub.projectName}</span>
                 </p>
                 <p className="text-xs text-text-muted mt-0.5 truncate">
-                  {r.major?.projectName ?? '—'}
+                  {r.major?.projectName ?? '-'}
                   {showPic && r.pic && <span> · <span className="font-medium text-text-secondary">{r.pic.name}</span></span>}
                 </p>
               </div>

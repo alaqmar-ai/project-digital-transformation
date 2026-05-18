@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * EPMS — demo data seeder for Neon.
+ * EPMS - demo data seeder for Neon.
  *
  * Populates major_projects, sub_projects, stage_schedules, attendance_records
- * and holiday_calendar with realistic-looking content. Idempotent — exits
+ * and holiday_calendar with realistic-looking content. Idempotent - exits
  * early if major_projects already has rows.
  *
  * Usage:  `npm run db:seed`
@@ -80,7 +80,7 @@ try {
     { name: 'Chassis Line 4 Retooling', desc: 'Retool the chassis main line to support new model platform.', owner: U.hidayat, status: 'In Progress', prog: 62, createdOff: -120 },
     { name: 'Trim & Final Robotics Cell', desc: 'New robotic cell in Trim & Final for door & dashboard fitment.', owner: U.ahmad, status: 'In Progress', prog: 41, createdOff: -90 },
     { name: 'Inspection Tunnel Upgrade', desc: 'Replace legacy inspection tunnel with vision-based QC system.', owner: U.faiz, status: 'Delayed', prog: 28, createdOff: -70 },
-    { name: 'Pilot Line for New EV Model', desc: 'Build pilot line for upcoming EV model — feasibility + tooling.', owner: U.admin, status: 'Pending', prog: 12, createdOff: -30 },
+    { name: 'Pilot Line for New EV Model', desc: 'Build pilot line for upcoming EV model - feasibility + tooling.', owner: U.admin, status: 'Pending', prog: 12, createdOff: -30 },
   ];
   const majorIds = [];
   for (const m of majorSeeds) {

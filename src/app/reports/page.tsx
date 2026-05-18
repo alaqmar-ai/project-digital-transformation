@@ -64,8 +64,8 @@ export default function ReportsPage() {
     })();
   }, [admin, user?.id]);
 
-  const userName = (id?: string) => users.find((u) => u.id === id)?.name ?? '—';
-  const majorName = (id: string) => majors.find((m) => m.id === id)?.projectName ?? '—';
+  const userName = (id?: string) => users.find((u) => u.id === id)?.name ?? '-';
+  const majorName = (id: string) => majors.find((m) => m.id === id)?.projectName ?? '-';
 
   const allReports: ReportSpec[] = [
     {
@@ -104,7 +104,7 @@ export default function ReportsPage() {
           rows: delayed.map((st) => {
             const sub = subs.find((s) => s.id === st.subProjectId);
             const late = st.planEnd ? Math.floor((Date.parse(today) - Date.parse(st.planEnd)) / 86400000) : 0;
-            return [sub?.projectName ?? '—', `${st.stageIndex + 1}. ${st.stageName}`, st.planEnd ? formatDate(st.planEnd) : '', late, st.status, st.remarks ?? ''];
+            return [sub?.projectName ?? '-', `${st.stageIndex + 1}. ${st.stageName}`, st.planEnd ? formatDate(st.planEnd) : '', late, st.status, st.remarks ?? ''];
           }),
         };
       },

@@ -201,11 +201,14 @@ export default function AttendancePage() {
                 return (
                   <button
                     key={idx}
-                    disabled={!selectedUser}
-                    onClick={() => setEditing({ date: c.date!, userId: selectedUser })}
-                    className={`relative aspect-square rounded-xl border p-2 text-left transition-all hover:ring-2 hover:ring-primary/30 ${
-                      isToday ? 'border-primary' : 'border-border'
-                    }`}
+                    disabled={!selectedUser || !canEdit}
+                    onClick={() => {
+                      if (!canEdit) return;
+                      setEditing({ date: c.date!, userId: selectedUser });
+                    }}
+                    className={`relative aspect-square rounded-xl border p-2 text-left transition-all ${
+                      canEdit ? 'hover:ring-2 hover:ring-primary/30 cursor-pointer' : 'cursor-default'
+                    } ${isToday ? 'border-primary' : 'border-border'}`}
                     style={{ background: tone }}
                   >
                     <div className="flex items-start justify-between">
@@ -351,10 +354,10 @@ function AttendanceEditModal({
   };
 
   return (
-    <Modal open={!!editing} onClose={onClose} title={`Attendance — ${formatDate(editing.date)}`} size="sm">
+    <Modal open={!!editing} onClose={onClose} title={`Attendance - ${formatDate(editing.date)}`} size="sm">
       <div className="space-y-4">
         <div className="text-xs text-text-muted">
-          {isWeekend ? 'Weekend day — only "Weekend Job" is allowed.' : isHoliday ? 'Public holiday — only "Holiday Job" is allowed.' : 'Weekday'}
+          {isWeekend ? 'Weekend day - only "Weekend Job" is allowed.' : isHoliday ? 'Public holiday - only "Holiday Job" is allowed.' : 'Weekday'}
         </div>
         <div>
           <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wide mb-1.5">Status</label>
@@ -364,7 +367,7 @@ function AttendanceEditModal({
             onChange={(e) => setStatus(e.target.value)}
             disabled={!canEdit}
           >
-            <option value="">— None —</option>
+            <option value="">- None -</option>
             {options.map((o) => (
               <option key={o} value={o}>
                 {o}
@@ -516,9 +519,9 @@ function MarkTodayPanel({ users, holidays, onChanged }: MarkTodayPanelProps) {
     <div className="bg-white border border-border rounded-2xl shadow-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-text-primary">Mark today — {formatDate(todayIsoStr)}</h3>
+          <h3 className="text-sm font-semibold text-text-primary">Mark today - {formatDate(todayIsoStr)}</h3>
           <p className="text-[11px] text-text-muted mt-0.5">
-            {isWeekend ? 'Weekend — only "Weekend Job" is allowed.' : isHoliday ? 'Public holiday — only "Holiday Job" is allowed.' : 'Choose a status for each staff member.'}
+            {isWeekend ? 'Weekend - only "Weekend Job" is allowed.' : isHoliday ? 'Public holiday - only "Holiday Job" is allowed.' : 'Choose a status for each staff member.'}
           </p>
         </div>
       </div>
@@ -559,7 +562,7 @@ function MarkTodayPanel({ users, holidays, onChanged }: MarkTodayPanelProps) {
                         }))
                       }
                     >
-                      <option value="">— None —</option>
+                      <option value="">- None -</option>
                       {options.map((o) => (
                         <option key={o} value={o}>
                           {o}

@@ -47,7 +47,7 @@ export default function MajorProjectsPage() {
 
   const ownerName = useMemo(() => {
     const map = new Map(users.map((u) => [u.id, u.name]));
-    return (id?: string) => (id ? map.get(id) ?? '—' : '—');
+    return (id?: string) => (id ? map.get(id) ?? '-' : '-');
   }, [users]);
 
   const filtered = useMemo(() => {

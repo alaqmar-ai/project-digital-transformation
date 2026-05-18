@@ -1,5 +1,5 @@
 /**
- * Notification engine — scans projects and emits 14/7/3/2/1-day lead-time
+ * Notification engine - scans projects and emits 14/7/3/2/1-day lead-time
  * alerts and delay escalations. Runs on app load and is idempotent (we
  * keep a "fired" log keyed by stage+lead so the same lead is never
  * notified twice).
@@ -77,7 +77,7 @@ export async function runNotificationScan(): Promise<number> {
               userId: rid,
               kind: 'stage_lead_time',
               title: `${lead} day${lead === 1 ? '' : 's'} until "${stage.stageName}" deadline`,
-              body: `${sub.projectName}${major ? ` (${major.projectName})` : ''} — PIC ${pic?.name ?? 'unassigned'}, due ${stage.planEnd}.`,
+              body: `${sub.projectName}${major ? ` (${major.projectName})` : ''} - PIC ${pic?.name ?? 'unassigned'}, due ${stage.planEnd}.`,
               refType: 'stage',
               refId: stage.id,
             });
@@ -85,7 +85,7 @@ export async function runNotificationScan(): Promise<number> {
         }
       }
 
-      // Delay escalation — once per stage
+      // Delay escalation - once per stage
       const derived = deriveStageStatus({
         status: stage.status,
         planEnd: stage.planEnd,
@@ -102,7 +102,7 @@ export async function runNotificationScan(): Promise<number> {
             userId: rid,
             kind: 'stage_delayed',
             title: `Delayed: ${stage.stageName}`,
-            body: `${sub.projectName}${major ? ` (${major.projectName})` : ''} — was due ${stage.planEnd}, still not complete.`,
+            body: `${sub.projectName}${major ? ` (${major.projectName})` : ''} - was due ${stage.planEnd}, still not complete.`,
             refType: 'stage',
             refId: stage.id,
           });

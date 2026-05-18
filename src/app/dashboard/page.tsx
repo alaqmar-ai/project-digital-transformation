@@ -93,7 +93,7 @@ export default function DashboardPage() {
     return Object.values(byGroup).map((b) => ({ ...b, progress: Math.round(b.progress / b.count) }));
   }, [subs]);
 
-  // Major projects visible to this user — admin sees all; staff sees only those
+  // Major projects visible to this user - admin sees all; staff sees only those
   // that contain at least one sub-project assigned to them.
   const visibleMajors = useMemo(() => {
     if (admin) return majors;
@@ -118,7 +118,7 @@ export default function DashboardPage() {
               </h3>
               <p className="text-[11px] text-text-muted">
                 {myDeadlines.length > 0
-                  ? `${myDeadlines.length} open stage${myDeadlines.length === 1 ? '' : 's'} assigned to you — nearest first`
+                  ? `${myDeadlines.length} open stage${myDeadlines.length === 1 ? '' : 's'} assigned to you - nearest first`
                   : 'Stages assigned to you and not yet completed'}
               </p>
             </div>

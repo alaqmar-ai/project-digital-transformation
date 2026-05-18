@@ -22,7 +22,7 @@ import type {
 const url = process.env.DATABASE_URL;
 export const neonEnabled = Boolean(url);
 
-// `neon()` is a tagged-template SQL client. Safe — it parameterizes interpolations.
+// `neon()` is a tagged-template SQL client. Safe - it parameterizes interpolations.
 export const sql = neonEnabled ? neon(url!) : null;
 
 export function requireSql() {

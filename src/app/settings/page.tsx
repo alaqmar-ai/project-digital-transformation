@@ -36,7 +36,7 @@ export default function SettingsPage() {
     reload();
   }, []);
 
-  const userName = (id?: string) => activityUsers.find((u) => u.id === id)?.name ?? '—';
+  const userName = (id?: string) => activityUsers.find((u) => u.id === id)?.name ?? '-';
 
   const add = async () => {
     if (!date || !name.trim()) return;
@@ -178,7 +178,7 @@ export default function SettingsPage() {
                     <span className="pill bg-primary-light text-primary border border-primary/10">{a.action}</span>
                   </td>
                   <td className="px-3 py-2.5 text-xs text-text-muted font-mono truncate max-w-xs">
-                    {a.refType ? `${a.refType}/${(a.refId ?? '').slice(0, 12)}` : '—'}
+                    {a.refType ? `${a.refType}/${(a.refId ?? '').slice(0, 12)}` : '-'}
                   </td>
                 </tr>
               ))}

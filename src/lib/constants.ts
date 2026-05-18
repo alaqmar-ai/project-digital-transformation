@@ -15,7 +15,7 @@ export const STAGES = [
 ] as const;
 export type StageName = (typeof STAGES)[number];
 
-// 6 equipment groups — fixed dropdown only
+// 6 equipment groups - fixed dropdown only
 export const EQUIPMENT_GROUPS = [
   'Chassis',
   'Trim',
@@ -26,11 +26,11 @@ export const EQUIPMENT_GROUPS = [
 ] as const;
 export type EquipmentGroup = (typeof EQUIPMENT_GROUPS)[number];
 
-// 3 sources — fixed dropdown only
+// 3 sources - fixed dropdown only
 export const SOURCES = ['Local', 'Overseas', 'TMA'] as const;
 export type SourceType = (typeof SOURCES)[number];
 
-// Project categories (free reference list — admin-extendable later)
+// Project categories (free reference list - admin-extendable later)
 export const CATEGORIES = [
   'New Model',
   'Replacement',
@@ -51,7 +51,7 @@ export const STATUSES = [
 ] as const;
 export type Status = (typeof STATUSES)[number];
 
-// Wide index signature — legacy callers also pass uppercase keys
+// Wide index signature - legacy callers also pass uppercase keys
 export const STATUS_COLORS: Record<string, string> = {
   Pending: '#94A3B8',
   'In Progress': '#2563EB',

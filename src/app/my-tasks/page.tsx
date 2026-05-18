@@ -53,11 +53,11 @@ export default function MyTasksPage() {
   return (
     <div className="p-6 md:p-10 max-w-content mx-auto">
       <PageHeader
-        title={view === 'mine' ? 'My Tasks' : 'All Tasks — Master List'}
+        title={view === 'mine' ? 'My Tasks' : 'All Tasks - Master List'}
         subtitle={
           view === 'mine'
-            ? `Open stages assigned to ${user?.name ?? 'you'} — nearest deadline first`
-            : 'Every open stage across the plant — nearest deadline first'
+            ? `Open stages assigned to ${user?.name ?? 'you'} - nearest deadline first`
+            : 'Every open stage across the plant - nearest deadline first'
         }
         action={
           isAdmin(user) && (

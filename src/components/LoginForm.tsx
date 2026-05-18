@@ -55,7 +55,7 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
           </p>
 
           <h1 className="text-3xl xl:text-4xl font-bold leading-[1.1] max-w-md tracking-tight">
-            Track every project, every stage, every deadline — across the entire plant.
+            Track every project, every stage, every deadline - across the entire plant.
           </h1>
           <p className="text-white/70 text-sm mt-4 max-w-md leading-relaxed">
             Capital equipment monitoring built for manufacturing engineering. Visibility from

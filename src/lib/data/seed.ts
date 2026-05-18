@@ -1,5 +1,5 @@
 /**
- * Demo seeder — fills the localStorage store with realistic-looking data
+ * Demo seeder - fills the localStorage store with realistic-looking data
  * the first time the app is opened. Idempotent (keyed by SEED_VERSION).
  *
  * Re-run by bumping SEED_VERSION or clearing localStorage.
@@ -54,7 +54,7 @@ export function maybeSeed() {
   if (process.env.NEXT_PUBLIC_USE_NEON === 'true') return;
   if (localStorage.getItem(SEED_KEY) === SEED_VERSION) return;
 
-  // If there is any user-created data, don't overwrite — just bump the version
+  // If there is any user-created data, don't overwrite - just bump the version
   // so we don't keep re-checking on every load.
   const hasMajors = load<MajorProject[]>(KEY.majors, []).length > 0;
   if (hasMajors) {
@@ -109,7 +109,7 @@ export function maybeSeed() {
     {
       id: rid('mp'),
       projectName: 'Pilot Line for New EV Model',
-      description: 'Build pilot line for upcoming EV model — feasibility + tooling.',
+      description: 'Build pilot line for upcoming EV model - feasibility + tooling.',
       ownerId: U.admin,
       status: 'Pending',
       overallProgress: 12,
@@ -144,7 +144,7 @@ export function maybeSeed() {
     { name: 'Dashboard Assembly Line', majorIdx: 1, group: 'Final', source: 'TMA', category: 'New Model', picId: U.staff, plannedStartOffset: -70, plannedEndOffset: 40, progress: 35, status: 'In Progress' },
     { name: 'Headlamp Aiming Station', majorIdx: 1, group: 'Final', source: 'Local', category: 'Upgrade', picId: U.faiz, plannedStartOffset: -60, plannedEndOffset: -8, progress: 100, status: 'Completed', remarks: 'Closed out and signed off by quality.' },
 
-    // Inspection Tunnel Upgrade — one delayed
+    // Inspection Tunnel Upgrade - one delayed
     { name: 'Vision QC Frame Installation', majorIdx: 2, group: 'Inspection', source: 'Overseas', category: 'Safety', picId: U.hidayat, plannedStartOffset: -60, plannedEndOffset: -7, progress: 55, status: 'Delayed', remarks: 'Customs delay on imported camera rig.' },
     { name: 'Tunnel Lighting Refit', majorIdx: 2, group: 'Inspection', source: 'Local', category: 'Kaizen', picId: U.ahmad, plannedStartOffset: -55, plannedEndOffset: 12, progress: 25, status: 'In Progress' },
 

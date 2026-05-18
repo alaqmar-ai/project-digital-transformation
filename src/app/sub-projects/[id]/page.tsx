@@ -35,7 +35,7 @@ export default function SubProjectDetailPage() {
 
   const userName = useMemo(() => {
     const map = new Map(users.map((u) => [u.id, u.name]));
-    return (uid?: string) => (uid ? map.get(uid) ?? '—' : '—');
+    return (uid?: string) => (uid ? map.get(uid) ?? '-' : '-');
   }, [users]);
 
   const load = async () => {
@@ -142,10 +142,10 @@ export default function SubProjectDetailPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <SummaryStat label="PIC" value={userName(sub.picId)} />
         <SummaryStat label="Category" value={sub.category} />
-        <SummaryStat label="Plan Start" value={sub.plannedStart ? formatDate(sub.plannedStart) : '—'} mono />
-        <SummaryStat label="Plan End" value={sub.plannedEnd ? formatDate(sub.plannedEnd) : '—'} mono />
-        <SummaryStat label="Actual Start" value={sub.actualStart ? formatDate(sub.actualStart) : '—'} mono />
-        <SummaryStat label="Actual End" value={sub.actualEnd ? formatDate(sub.actualEnd) : '—'} mono />
+        <SummaryStat label="Plan Start" value={sub.plannedStart ? formatDate(sub.plannedStart) : '-'} mono />
+        <SummaryStat label="Plan End" value={sub.plannedEnd ? formatDate(sub.plannedEnd) : '-'} mono />
+        <SummaryStat label="Actual Start" value={sub.actualStart ? formatDate(sub.actualStart) : '-'} mono />
+        <SummaryStat label="Actual End" value={sub.actualEnd ? formatDate(sub.actualEnd) : '-'} mono />
         <SummaryStat
           label="Planned Duration"
           value={`${planDuration(sub.plannedStart, sub.plannedEnd)} d`}
@@ -263,7 +263,7 @@ function StageRowEditable({
           className="input-styled text-xs font-mono py-1"
         />
       </td>
-      <td className="px-3 py-3 text-xs font-mono text-text-secondary text-center">{planDur || '—'}</td>
+      <td className="px-3 py-3 text-xs font-mono text-text-secondary text-center">{planDur || '-'}</td>
       <td className="px-3 py-3">
         <input
           type="date"
@@ -282,7 +282,7 @@ function StageRowEditable({
           className="input-styled text-xs font-mono py-1"
         />
       </td>
-      <td className="px-3 py-3 text-xs font-mono text-text-secondary text-center">{actDur || '—'}</td>
+      <td className="px-3 py-3 text-xs font-mono text-text-secondary text-center">{actDur || '-'}</td>
       <td className="px-3 py-3">
         <select
           disabled={!canEdit}
@@ -302,7 +302,7 @@ function StageRowEditable({
           disabled={!canEdit}
           value={remarks}
           onChange={(e) => setRemarks(e.target.value)}
-          placeholder="—"
+          placeholder="-"
           className="input-styled text-xs py-1"
         />
       </td>

@@ -108,7 +108,7 @@ export default function AnalyticsPage() {
     const map: Record<string, { name: string; assigned: number; completed: number; delayed: number; _sum: number }> = {};
     subs.forEach((s) => {
       const u = userById.get(s.picId);
-      const k = u?.name ?? '—';
+      const k = u?.name ?? '-';
       const bucket = (map[k] = map[k] ?? { name: k, assigned: 0, completed: 0, delayed: 0, _sum: 0 });
       bucket.assigned++;
       if (s.status === 'Completed') bucket.completed++;
@@ -166,7 +166,7 @@ export default function AnalyticsPage() {
         subtitle={admin ? 'Breakdowns across projects, PICs, attendance and delays' : 'Your assigned projects and attendance'}
       />
 
-      {/* Admin cascading selectors — major project detail ─────────────── */}
+      {/* Admin cascading selectors - major project detail ─────────────── */}
       {admin && (
         <div className="bg-white border border-border rounded-2xl shadow-card mb-5 overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
@@ -185,7 +185,7 @@ export default function AnalyticsPage() {
                 setSelStage('');
                 setSelPic('');
               }}
-              options={[{ value: '', label: '— Choose a project —' }, ...majors.map((m) => ({ value: m.id, label: m.projectName }))]}
+              options={[{ value: '', label: '- Choose a project -' }, ...majors.map((m) => ({ value: m.id, label: m.projectName }))]}
             />
             <Selector
               label="Process / stage"
@@ -351,7 +351,7 @@ function CascadeSummary({
       <div className="flex items-center justify-between mb-4">
         <div>
           <p className="text-base font-bold text-text-primary">{major.projectName}</p>
-          <p className="text-xs text-text-muted mt-0.5">{major.description ?? '—'}</p>
+          <p className="text-xs text-text-muted mt-0.5">{major.description ?? '-'}</p>
         </div>
         <StatusPill status={major.status} />
       </div>
@@ -387,9 +387,9 @@ function CascadeSummary({
               {subs.map((s) => (
                 <tr key={s.id} className="border-t border-border">
                   <td className="px-3 py-2 font-medium text-text-primary">{s.projectName}</td>
-                  <td className="px-3 py-2 text-text-secondary">{userById.get(s.picId)?.name ?? '—'}</td>
+                  <td className="px-3 py-2 text-text-secondary">{userById.get(s.picId)?.name ?? '-'}</td>
                   <td className="px-3 py-2 font-mono text-text-secondary">
-                    {s.plannedEnd ? formatDate(s.plannedEnd) : '—'}
+                    {s.plannedEnd ? formatDate(s.plannedEnd) : '-'}
                   </td>
                   <td className="px-3 py-2 font-mono text-text-secondary">{Math.round(s.progress)}%</td>
                   <td className="px-3 py-2"><StatusPill status={s.status} /></td>
