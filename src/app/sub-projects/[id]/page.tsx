@@ -1,21 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, ChevronRight, ChevronDown, ListChecks } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import PageHeader from '@/components/ui/PageHeader';
 import StatusPill from '@/components/ui/StatusPill';
+import StageGantt from '@/components/StageGantt';
+import StageCheckpoints from '@/components/StageCheckpoints';
 import {
   listSubProjects,
   listStages,
   updateStage,
   updateSubProject,
   listMajorProjects,
+  listCheckpointsForStages,
 } from '@/lib/data/store';
 import { useUsers } from '@/hooks/useUsers';
-import type { SubProject, StageSchedule, MajorProject, Status } from '@/lib/types';
+import type { SubProject, StageSchedule, MajorProject, Status, StageCheckpoint } from '@/lib/types';
 import { STATUSES } from '@/lib/constants';
 import { planDuration, formatDate } from '@/lib/utils';
 import { deriveStageStatus, progressOfSubProject } from '@/lib/status';
@@ -30,6 +33,8 @@ export default function SubProjectDetailPage() {
   const [sub, setSub] = useState<SubProject | null>(null);
   const [major, setMajor] = useState<MajorProject | null>(null);
   const [stages, setStages] = useState<StageSchedule[]>([]);
+  const [checkpointsByStage, setCheckpointsByStage] = useState<Record<string, StageCheckpoint[]>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -41,9 +46,24 @@ export default function SubProjectDetailPage() {
     if (s) {
       const majors = await listMajorProjects();
       setMajor(majors.find((m) => m.id === s.majorProjectId) ?? null);
-      setStages(await listStages(s.id));
+      const sts = await listStages(s.id);
+      setStages(sts);
+      const cps = await listCheckpointsForStages(sts.map((st) => st.id));
+      const byStage: Record<string, StageCheckpoint[]> = {};
+      for (const cp of cps) {
+        (byStage[cp.stageId] ||= []).push(cp);
+      }
+      setCheckpointsByStage(byStage);
     }
     setLoading(false);
+  };
+
+  const toggleExpand = (stageId: string) => {
+    setExpanded((prev) => ({ ...prev, [stageId]: !prev[stageId] }));
+  };
+
+  const handleCheckpointsChange = (stageId: string, next: StageCheckpoint[]) => {
+    setCheckpointsByStage((prev) => ({ ...prev, [stageId]: next }));
   };
 
   useEffect(() => {
@@ -149,6 +169,11 @@ export default function SubProjectDetailPage() {
         <SummaryStat label="Progress" value={`${Math.round(sub.progress)}%`} mono />
       </div>
 
+      {/* Gantt timeline (plan dotted, actual solid) */}
+      <div className="mb-6">
+        <StageGantt stages={stages} />
+      </div>
+
       <div className="bg-white border border-border rounded-2xl shadow-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h3 className="text-sm font-semibold text-text-primary">Stage Schedule</h3>
@@ -158,6 +183,7 @@ export default function SubProjectDetailPage() {
           <table className="w-full">
             <thead className="bg-elevated">
               <tr className="text-left">
+                <th className="w-8" />
                 <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-text-secondary">Stage</th>
                 <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-text-secondary">Plan Start</th>
                 <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-text-secondary">Plan End</th>
@@ -171,15 +197,40 @@ export default function SubProjectDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {stages.map((st) => (
-                <StageRowEditable
-                  key={st.id}
-                  stage={st}
-                  canEdit={!!canEdit}
-                  saving={saving === st.id}
-                  onSave={(patch) => handleStageSave(st, patch)}
-                />
-              ))}
+              {stages.map((st) => {
+                const cps = checkpointsByStage[st.id] ?? [];
+                const doneCount = cps.filter((c) => c.done).length;
+                const isOpen = !!expanded[st.id];
+                const colSpan = canEdit ? 11 : 10;
+                return (
+                  <Fragment key={st.id}>
+                    <StageRowEditable
+                      stage={st}
+                      canEdit={!!canEdit}
+                      saving={saving === st.id}
+                      expanded={isOpen}
+                      onToggleExpand={() => toggleExpand(st.id)}
+                      checkpointCount={cps.length}
+                      checkpointDoneCount={doneCount}
+                      onSave={(patch) => handleStageSave(st, patch)}
+                    />
+                    {isOpen && (
+                      <tr className="bg-elevated/30">
+                        <td />
+                        <td colSpan={colSpan - 1} className="px-4 py-3">
+                          <StageCheckpoints
+                            stageId={st.id}
+                            checkpoints={cps}
+                            canEdit={!!canEdit}
+                            onChange={(next) => handleCheckpointsChange(st.id, next)}
+                            onError={(msg) => addToast('error', msg)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -201,11 +252,19 @@ function StageRowEditable({
   stage,
   canEdit,
   saving,
+  expanded,
+  onToggleExpand,
+  checkpointCount,
+  checkpointDoneCount,
   onSave,
 }: {
   stage: StageSchedule;
   canEdit: boolean;
   saving: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  checkpointCount: number;
+  checkpointDoneCount: number;
   onSave: (patch: Partial<StageSchedule>) => void;
 }) {
   const [planStart, setPlanStart] = useState(stage.planStart ?? '');
@@ -237,8 +296,31 @@ function StageRowEditable({
 
   return (
     <tr className="border-t border-border hover:bg-elevated/50 transition-colors">
+      <td className="pl-2 pr-0">
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          className="p-1 rounded-md hover:bg-elevated text-text-muted hover:text-primary transition-colors"
+          aria-label={expanded ? 'Collapse checkpoints' : 'Expand checkpoints'}
+        >
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+      </td>
       <td className="px-4 py-3 text-sm font-semibold text-text-primary whitespace-nowrap">
-        {stage.stageIndex + 1}. {stage.stageName}
+        <div className="flex items-center gap-2">
+          <span>
+            {stage.stageIndex + 1}. {stage.stageName}
+          </span>
+          {checkpointCount > 0 && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-elevated text-[10px] font-mono text-text-muted"
+              title={`${checkpointDoneCount} of ${checkpointCount} checkpoints done`}
+            >
+              <ListChecks size={10} />
+              {checkpointDoneCount}/{checkpointCount}
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-3 py-3">
         <input

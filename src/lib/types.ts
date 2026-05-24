@@ -91,6 +91,27 @@ export interface StageSchedule {
   progress?: number; // 0..100
 }
 
+export interface StageCheckpoint {
+  id: string;
+  stageId: string;
+  label: string;
+  done: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DailyTodo {
+  id: string;
+  userId: string;
+  label: string;
+  done: boolean;
+  dueDate?: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Attendance ──
 
 export type AttendanceStatus = AttendanceWeekday | AttendanceWeekend;

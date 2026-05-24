@@ -1,439 +1,340 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { Calendar, AlertCircle, CheckCircle2, Circle, Clock, User as UserIcon, GripVertical } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Loader2,
+  CheckCircle2,
+  Circle,
+  Calendar,
+  CheckSquare,
+} from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import PageHeader from '@/components/ui/PageHeader';
-import { useUsers } from '@/hooks/useUsers';
 import {
-  listSubProjects,
-  listStages,
-  listStagesForSubs,
-  listMajorProjects,
-  updateStage,
-  updateSubProject,
+  listDailyTodos,
+  createDailyTodo,
+  updateDailyTodo,
+  deleteDailyTodo,
 } from '@/lib/data/store';
-import type { StageSchedule, SubProject, MajorProject, Status } from '@/lib/types';
-import { isAdmin } from '@/lib/types';
-import { todayIso, deriveStageStatus, progressOfSubProject } from '@/lib/status';
+import type { DailyTodo } from '@/lib/types';
+import { todayIso } from '@/lib/status';
 import { formatDate, cn } from '@/lib/utils';
-
-interface Row {
-  stage: StageSchedule;
-  sub: SubProject;
-  major?: MajorProject;
-}
-
-const COLUMN_DAYS = 7;
 
 export default function DailyProgressPage() {
   const { user, addToast } = useApp();
-  const { userName } = useUsers();
-  const [rows, setRows] = useState<Row[]>([]);
+  const [todos, setTodos] = useState<DailyTodo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
-
-  const admin = isAdmin(user);
-
-  const load = async () => {
-    setLoading(true);
-    const today = todayIso();
-    const horizon = addDaysIso(today, COLUMN_DAYS - 1);
-    const [subs, majors] = await Promise.all([listSubProjects(), listMajorProjects()]);
-    const majorById = new Map(majors.map((m) => [m.id, m]));
-    const scopedSubs = admin ? subs : subs.filter((s) => s.picId === user?.id);
-    const subById = new Map(scopedSubs.map((s) => [s.id, s]));
-    const allStages = await listStagesForSubs(scopedSubs.map((s) => s.id));
-    const collected: Row[] = [];
-    for (const s of allStages) {
-      if (s.status === 'Completed' || s.status === 'Cancelled') continue;
-      if (!s.planEnd || s.planEnd > horizon) continue;
-      const sub = subById.get(s.subProjectId);
-      if (!sub) continue;
-      collected.push({ stage: s, sub, major: majorById.get(sub.majorProjectId) });
-    }
-    setRows(collected);
-    setLoading(false);
-  };
+  const [draftLabel, setDraftLabel] = useState('');
+  const [draftDue, setDraftDue] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [admin, user?.id]);
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const list = await listDailyTodos(user.id);
+        if (!cancelled) setTodos(list);
+      } catch (e) {
+        if (!cancelled) addToast('error', (e as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, addToast]);
 
   const today = todayIso();
 
-  const overdueRows = useMemo(
-    () => rows.filter((r) => (r.stage.planEnd ?? '') < today),
-    [rows, today]
+  const { open, done } = useMemo(() => {
+    return {
+      open: todos.filter((t) => !t.done),
+      done: todos.filter((t) => t.done),
+    };
+  }, [todos]);
+
+  const overdueCount = useMemo(
+    () => open.filter((t) => t.dueDate && t.dueDate < today).length,
+    [open, today]
   );
 
-  const columns = useMemo(() => {
-    const cols: { iso: string; rows: Row[] }[] = [];
-    for (let i = 0; i < COLUMN_DAYS; i++) {
-      const iso = addDaysIso(today, i);
-      cols.push({ iso, rows: rows.filter((r) => r.stage.planEnd === iso) });
-    }
-    return cols;
-  }, [rows, today]);
-
-  const toggleStage = async (r: Row, completed: boolean) => {
-    setSaving(r.stage.id);
+  const handleAdd = async () => {
+    const label = draftLabel.trim();
+    if (!label || !user?.id) return;
+    setBusy('add');
     try {
-      const today = todayIso();
-      const nextStatus: Status = completed ? 'Completed' : deriveStageStatus({
-        status: 'In Progress',
-        planEnd: r.stage.planEnd,
-        actualEnd: undefined,
+      const created = await createDailyTodo({
+        userId: user.id,
+        label,
+        dueDate: draftDue || undefined,
+        sortOrder: todos.length,
       });
-      const patch: Partial<StageSchedule> = {
-        status: nextStatus,
-        actualEnd: completed ? today : undefined,
-        progress: completed ? 100 : (r.stage.progress ?? 0),
-      };
-      await updateStage(r.stage.id, patch);
-      const updated = rows.map((row) =>
-        row.stage.id === r.stage.id ? { ...row, stage: { ...row.stage, ...patch } } : row
-      );
-      setRows(updated);
-
-      const sameSub = updated.filter((row) => row.sub.id === r.sub.id).map((row) => row.stage);
-      const allSubStages = await listStages(r.sub.id);
-      const merged = allSubStages.map((s) => sameSub.find((x) => x.id === s.id) ?? s);
-      const newProgress = progressOfSubProject(merged);
-      await updateSubProject(r.sub.id, { progress: newProgress });
-      addToast('success', completed ? 'Marked complete' : 'Reopened');
-      if (completed) {
-        setRows((prev) => prev.filter((row) => row.stage.id !== r.stage.id));
-      }
+      setTodos((prev) => [...prev, created]);
+      setDraftLabel('');
+      setDraftDue('');
     } catch (e) {
       addToast('error', (e as Error).message);
     } finally {
-      setSaving(null);
+      setBusy(null);
     }
   };
 
-  const reschedule = async (r: Row, targetIso: string) => {
-    if (r.stage.planEnd === targetIso) return;
-    const prev = rows;
-    // Optimistic update
-    const optimistic = rows.map((row) =>
-      row.stage.id === r.stage.id
-        ? { ...row, stage: { ...row.stage, planEnd: targetIso } }
-        : row
-    );
-    setRows(optimistic);
-    setSaving(r.stage.id);
+  const handleToggle = async (todo: DailyTodo) => {
+    setBusy(todo.id);
     try {
-      const nextStatus = deriveStageStatus({
-        status: r.stage.status,
-        planEnd: targetIso,
-        actualEnd: r.stage.actualEnd,
-      });
-      await updateStage(r.stage.id, { planEnd: targetIso, status: nextStatus });
-      addToast('success', `Moved to ${formatDate(targetIso)}`);
+      const updated = await updateDailyTodo(todo.id, { done: !todo.done });
+      setTodos((prev) => prev.map((t) => (t.id === todo.id ? updated : t)));
     } catch (e) {
-      setRows(prev);
       addToast('error', (e as Error).message);
     } finally {
-      setSaving(null);
+      setBusy(null);
     }
   };
 
-  const handleDrop = (targetIso: string) => {
-    if (!dragId) return;
-    const row = rows.find((r) => r.stage.id === dragId);
-    setDragId(null);
-    setDropTarget(null);
-    if (!row) return;
-    reschedule(row, targetIso);
+  const handleDelete = async (todo: DailyTodo) => {
+    setBusy(todo.id);
+    try {
+      await deleteDailyTodo(todo.id);
+      setTodos((prev) => prev.filter((t) => t.id !== todo.id));
+    } catch (e) {
+      addToast('error', (e as Error).message);
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
-    <div className="p-6 md:p-10 max-w-content mx-auto">
+    <div className="p-6 md:p-10 max-w-3xl mx-auto">
       <PageHeader
         title="Daily Progress"
-        subtitle={`Drag a card to reschedule. Next ${COLUMN_DAYS} days · ${formatDate(today)}`}
+        subtitle="Your personal todo list - add anything you're working on today"
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-        <StatTile label="Due today" value={columns[0].rows.length} icon={<Calendar size={18} />} tone="blue" />
-        <StatTile label="Overdue" value={overdueRows.length} icon={<AlertCircle size={18} />} tone="red" />
-        <StatTile label="This week" value={rows.length - overdueRows.length} icon={<Clock size={18} />} tone="green" />
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <StatTile label="Open" value={open.length} tone="blue" icon={<Circle size={16} />} />
+        <StatTile label="Overdue" value={overdueCount} tone="red" icon={<Calendar size={16} />} />
+        <StatTile label="Done" value={done.length} tone="green" icon={<CheckSquare size={16} />} />
+      </div>
+
+      {/* Add new */}
+      <div className="bg-white border border-border rounded-2xl shadow-card p-4 mb-6">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="text"
+            value={draftLabel}
+            onChange={(e) => setDraftLabel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAdd();
+              }
+            }}
+            placeholder="What needs to get done?"
+            disabled={busy === 'add'}
+            className="input-styled text-sm py-2 flex-1"
+          />
+          <input
+            type="date"
+            value={draftDue}
+            onChange={(e) => setDraftDue(e.target.value)}
+            disabled={busy === 'add'}
+            className="input-styled text-sm py-2 font-mono w-full sm:w-44"
+            title="Optional due date"
+          />
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={!draftLabel.trim() || busy === 'add'}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {busy === 'add' ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            Add
+          </button>
+        </div>
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-          {[...Array(7)].map((_, i) => (
-            <div key={i} className="skeleton h-64" />
+        <div className="space-y-2">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="skeleton h-12 rounded-xl" />
           ))}
         </div>
       ) : (
         <>
-          {overdueRows.length > 0 && (
-            <DayColumn
-              iso="overdue"
-              title="Overdue"
-              subtitle={`${overdueRows.length} item${overdueRows.length === 1 ? '' : 's'} past deadline`}
-              tone="red"
-              rows={overdueRows}
-              userName={userName}
-              saving={saving}
-              onToggle={toggleStage}
-              showDate
-              wide
-              dragId={dragId}
-              dropTarget={dropTarget}
-              onDragStart={setDragId}
-              onDragEnd={() => { setDragId(null); setDropTarget(null); }}
-              onDragOver={setDropTarget}
-              onDrop={handleDrop}
-              droppable={false}
-            />
-          )}
+          <Section
+            title="To do"
+            count={open.length}
+            empty="Nothing on your list - add something above."
+            todos={open}
+            busy={busy}
+            today={today}
+            onToggle={handleToggle}
+            onDelete={handleDelete}
+          />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 mt-3">
-            {columns.map((c, i) => (
-              <DayColumn
-                key={c.iso}
-                iso={c.iso}
-                title={dayLabel(c.iso, i)}
-                subtitle={formatDate(c.iso)}
-                tone={i === 0 ? 'blue' : 'slate'}
-                rows={c.rows}
-                userName={userName}
-                saving={saving}
-                onToggle={toggleStage}
-                dragId={dragId}
-                dropTarget={dropTarget}
-                onDragStart={setDragId}
-                onDragEnd={() => { setDragId(null); setDropTarget(null); }}
-                onDragOver={setDropTarget}
-                onDrop={handleDrop}
-                droppable
+          {done.length > 0 && (
+            <div className="mt-8">
+              <Section
+                title="Done"
+                count={done.length}
+                empty=""
+                todos={done}
+                busy={busy}
+                today={today}
+                onToggle={handleToggle}
+                onDelete={handleDelete}
+                muted
               />
-            ))}
-          </div>
+            </div>
+          )}
         </>
       )}
     </div>
   );
 }
 
-interface ColumnProps {
-  iso: string;
-  title: string;
-  subtitle?: string;
-  tone: 'blue' | 'red' | 'slate' | 'green';
-  rows: Row[];
-  userName: (id: string) => string;
-  saving: string | null;
-  onToggle: (r: Row, completed: boolean) => void;
-  showDate?: boolean;
-  wide?: boolean;
-  dragId: string | null;
-  dropTarget: string | null;
-  onDragStart: (id: string) => void;
-  onDragEnd: () => void;
-  onDragOver: (iso: string | null) => void;
-  onDrop: (iso: string) => void;
-  droppable?: boolean;
-}
-
-function DayColumn({
-  iso,
+function Section({
   title,
-  subtitle,
-  tone,
-  rows,
-  userName,
-  saving,
+  count,
+  empty,
+  todos,
+  busy,
+  today,
   onToggle,
-  showDate = false,
-  wide = false,
-  dragId,
-  dropTarget,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDrop,
-  droppable = false,
-}: ColumnProps) {
-  const toneMap = {
-    blue: 'border-blue-200 bg-blue-50/40',
-    red: 'border-red-200 bg-red-50/40',
-    slate: 'border-border bg-elevated/30',
-    green: 'border-emerald-200 bg-emerald-50/40',
-  };
-  const titleTone = {
-    blue: 'text-primary',
-    red: 'text-danger',
-    slate: 'text-text-secondary',
-    green: 'text-emerald-700',
-  };
-
-  const isDropping = droppable && dropTarget === iso && dragId !== null;
-
+  onDelete,
+  muted,
+}: {
+  title: string;
+  count: number;
+  empty: string;
+  todos: DailyTodo[];
+  busy: string | null;
+  today: string;
+  onToggle: (t: DailyTodo) => void;
+  onDelete: (t: DailyTodo) => void;
+  muted?: boolean;
+}) {
   return (
-    <div
-      onDragOver={(e) => {
-        if (!droppable || !dragId) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        if (dropTarget !== iso) onDragOver(iso);
-      }}
-      onDragLeave={() => {
-        if (droppable && dropTarget === iso) onDragOver(null);
-      }}
-      onDrop={(e) => {
-        if (!droppable) return;
-        e.preventDefault();
-        onDrop(iso);
-      }}
-      className={cn(
-        'rounded-2xl border p-3 flex flex-col gap-2 transition-all',
-        toneMap[tone],
-        wide && 'mb-2',
-        isDropping && 'ring-2 ring-primary ring-offset-1 bg-primary-light/40 scale-[1.01]'
-      )}
-    >
-      <div className="px-1 pb-2 border-b border-border/60">
-        <div className="flex items-center justify-between">
-          <span className={cn('text-xs font-bold uppercase tracking-wide', titleTone[tone])}>{title}</span>
-          <span className="text-[10px] font-mono text-text-muted">{rows.length}</span>
-        </div>
-        {subtitle && <p className="text-[10px] text-text-muted mt-0.5">{subtitle}</p>}
+    <div>
+      <div className="flex items-center justify-between mb-2 px-1">
+        <h3 className={cn('text-xs font-bold uppercase tracking-wider', muted ? 'text-text-muted' : 'text-text-secondary')}>
+          {title}
+        </h3>
+        <span className="text-[10px] font-mono text-text-muted">{count}</span>
       </div>
-
-      {rows.length === 0 ? (
-        <p className={cn('text-[11px] text-text-muted italic py-3 px-1', isDropping && 'text-primary not-italic font-semibold')}>
-          {isDropping ? 'Drop to reschedule' : 'Nothing scheduled.'}
-        </p>
+      {todos.length === 0 ? (
+        empty && <p className="text-sm text-text-muted italic px-1 py-3">{empty}</p>
       ) : (
-        <div className={cn('flex flex-col gap-2', wide && 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2')}>
-          {rows.map((r) => (
-            <TaskCard
-              key={r.stage.id}
-              r={r}
-              userName={userName}
-              saving={saving === r.stage.id}
-              onToggle={onToggle}
-              showDate={showDate}
-              isDragging={dragId === r.stage.id}
-              onDragStart={() => onDragStart(r.stage.id)}
-              onDragEnd={onDragEnd}
+        <ul className="space-y-2">
+          {todos.map((t) => (
+            <TodoRow
+              key={t.id}
+              todo={t}
+              busy={busy === t.id}
+              overdue={!t.done && !!t.dueDate && t.dueDate < today}
+              onToggle={() => onToggle(t)}
+              onDelete={() => onDelete(t)}
             />
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );
 }
 
-function TaskCard({
-  r,
-  userName,
-  saving,
+function TodoRow({
+  todo,
+  busy,
+  overdue,
   onToggle,
-  showDate,
-  isDragging,
-  onDragStart,
-  onDragEnd,
+  onDelete,
 }: {
-  r: Row;
-  userName: (id: string) => string;
-  saving: boolean;
-  onToggle: (r: Row, completed: boolean) => void;
-  showDate?: boolean;
-  isDragging: boolean;
-  onDragStart: () => void;
-  onDragEnd: () => void;
+  todo: DailyTodo;
+  busy: boolean;
+  overdue: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
 }) {
-  const completed = r.stage.status === 'Completed';
-  const overdue = !completed && (r.stage.planEnd ?? '') < todayIso();
-
   return (
-    <div
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', r.stage.id);
-        onDragStart();
-      }}
-      onDragEnd={onDragEnd}
+    <li
       className={cn(
-        'group bg-white border border-border rounded-xl p-2.5 shadow-card hover:shadow-elevated transition-all cursor-grab active:cursor-grabbing',
-        isDragging && 'opacity-40 ring-2 ring-primary'
+        'group bg-white border border-border rounded-xl px-3 py-2.5 flex items-center gap-3 shadow-card hover:shadow-elevated transition-all',
+        todo.done && 'bg-elevated/40'
       )}
     >
-      <div className="flex items-start gap-2">
-        <button
-          onClick={() => onToggle(r, !completed)}
-          disabled={saving}
-          className={cn(
-            'mt-0.5 flex-shrink-0 transition-colors',
-            completed ? 'text-emerald-600' : 'text-text-muted hover:text-primary'
-          )}
-          aria-label={completed ? 'Reopen' : 'Mark complete'}
-        >
-          {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-1">
-            <Link
-              href={`/sub-projects/${r.sub.id}`}
-              className={cn(
-                'text-[13px] font-semibold text-text-primary leading-tight line-clamp-2 hover:text-primary',
-                completed && 'line-through text-text-muted'
-              )}
-            >
-              {r.stage.stageIndex + 1}. {r.stage.stageName}
-            </Link>
-            <GripVertical size={12} className="text-text-muted/60 flex-shrink-0 mt-0.5" aria-hidden />
-          </div>
-          <p className="text-[11px] text-text-muted mt-0.5 truncate">{r.sub.projectName}</p>
-          {r.major && (
-            <p className="text-[10px] text-text-muted mt-0.5 truncate">{r.major.projectName}</p>
-          )}
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={busy}
+        className={cn(
+          'flex-shrink-0 transition-colors',
+          todo.done ? 'text-emerald-600' : 'text-text-muted hover:text-primary',
+          busy && 'opacity-50'
+        )}
+        aria-label={todo.done ? 'Reopen' : 'Mark complete'}
+      >
+        {busy ? (
+          <Loader2 size={20} className="animate-spin" />
+        ) : todo.done ? (
+          <CheckCircle2 size={20} />
+        ) : (
+          <Circle size={20} />
+        )}
+      </button>
 
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <span className="inline-flex items-center gap-1 text-[10px] text-text-secondary bg-elevated rounded-md px-1.5 py-0.5">
-              <UserIcon size={10} />
-              <span className="truncate max-w-[100px]">{userName(r.sub.picId)}</span>
-            </span>
-            {showDate && r.stage.planEnd && (
-              <span
-                className={cn(
-                  'inline-flex items-center gap-1 text-[10px] rounded-md px-1.5 py-0.5 font-mono',
-                  overdue ? 'bg-red-50 text-danger' : 'bg-elevated text-text-secondary'
-                )}
-              >
-                {formatDate(r.stage.planEnd)}
-              </span>
-            )}
-            {r.stage.progress != null && r.stage.progress > 0 && !completed && (
-              <span className="text-[10px] text-text-muted font-mono">{Math.round(r.stage.progress)}%</span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+      <span
+        className={cn(
+          'flex-1 text-sm leading-snug',
+          todo.done ? 'line-through text-text-muted' : 'text-text-primary'
+        )}
+      >
+        {todo.label}
+      </span>
+
+      {todo.dueDate && (
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-md',
+            overdue
+              ? 'bg-red-50 text-danger'
+              : todo.done
+                ? 'bg-elevated text-text-muted'
+                : 'bg-primary-light text-primary'
+          )}
+        >
+          <Calendar size={10} />
+          {formatDate(todo.dueDate)}
+        </span>
+      )}
+
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={busy}
+        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50 text-text-muted hover:text-red-600 disabled:opacity-50"
+        aria-label="Delete"
+      >
+        <Trash2 size={14} />
+      </button>
+    </li>
   );
 }
 
 function StatTile({
   label,
   value,
-  icon,
   tone,
+  icon,
 }: {
   label: string;
   value: number;
-  icon: React.ReactNode;
   tone: 'blue' | 'red' | 'green';
+  icon: React.ReactNode;
 }) {
   const map = {
     blue: 'bg-primary-light text-primary',
@@ -441,27 +342,12 @@ function StatTile({
     green: 'bg-emerald-50 text-emerald-600',
   };
   return (
-    <div className="bg-white border border-border rounded-2xl p-5 shadow-card">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs uppercase tracking-wider font-semibold text-text-muted">{label}</p>
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${map[tone]}`}>{icon}</div>
+    <div className="bg-white border border-border rounded-2xl p-4 shadow-card">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-[10px] uppercase tracking-wider font-semibold text-text-muted">{label}</p>
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${map[tone]}`}>{icon}</div>
       </div>
-      <p className="text-2xl font-bold text-text-primary font-mono">{value}</p>
+      <p className="text-xl font-bold text-text-primary font-mono">{value}</p>
     </div>
   );
-}
-
-function addDaysIso(iso: string, days: number): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() + days);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-}
-
-function dayLabel(iso: string, offset: number): string {
-  if (offset === 0) return 'Today';
-  if (offset === 1) return 'Tomorrow';
-  const [y, m, d] = iso.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dt.getDay()];
 }

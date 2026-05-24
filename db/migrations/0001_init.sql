@@ -39,7 +39,8 @@ do $$ begin
   create type attendance_status_enum as enum (
     'Present','Annual Leave','Half-day (AM)','Half-day (PM)','Emergency Leave',
     'Medical Leave','Hospitalization Leave','Training','Business Trip',
-    'Unpaid Leave','Compassionate Leave','Holiday Job','Weekend Job'
+    'Unpaid Leave','Compassionate Leave','Holiday Job','Weekend Job',
+    'Late','SAP'
   );
 exception when duplicate_object then null; end $$;
 

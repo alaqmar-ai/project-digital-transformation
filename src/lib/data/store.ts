@@ -10,6 +10,8 @@ import type {
   MajorProject,
   SubProject,
   StageSchedule,
+  StageCheckpoint,
+  DailyTodo,
   AttendanceRecord,
   Holiday,
   NotificationItem,
@@ -58,13 +60,19 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function actorId(): string {
   if (typeof window === 'undefined') return '';
   try {
     const raw = localStorage.getItem('epms_user_v2');
     if (!raw) return '';
     const u = JSON.parse(raw);
-    return u?.id ?? '';
+    const id = u?.id ?? '';
+    // When Neon is enabled, activity_logs.user_id is a uuid column.
+    // Drop legacy demo ids like 'u_admin' so the insert doesn't crash.
+    if (useNeon && !UUID_RE.test(id)) return '';
+    return id;
   } catch {
     return '';
   }
@@ -335,6 +343,120 @@ export async function updateStage(id: string, patch: Partial<StageSchedule>): Pr
   save(KEY.stages, all);
   logActivityLocal({ userId: actorId(), action: 'update_stage', refType: 'stage', refId: id, before, after: all[i] });
   return all[i];
+}
+
+// ─── Stage checkpoints (todolist per stage) ────────────────────────────────
+
+export async function listCheckpointsForStages(stageIds: string[]): Promise<StageCheckpoint[]> {
+  if (stageIds.length === 0) return [];
+  if (useNeon) return srv.listCheckpointsForStagesAction(stageIds);
+  const ids = new Set(stageIds);
+  return load<StageCheckpoint[]>('epms_checkpoints_v2', [])
+    .filter((c) => ids.has(c.stageId))
+    .sort((a, b) => a.stageId.localeCompare(b.stageId) || a.sortOrder - b.sortOrder);
+}
+
+export async function createCheckpoint(input: {
+  stageId: string;
+  label: string;
+  sortOrder?: number;
+}): Promise<StageCheckpoint> {
+  if (useNeon) return srv.createCheckpointAction(input);
+  const now = nowIso();
+  const cp: StageCheckpoint = {
+    id: rid('cp'),
+    stageId: input.stageId,
+    label: input.label,
+    done: false,
+    sortOrder: input.sortOrder ?? 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const all = load<StageCheckpoint[]>('epms_checkpoints_v2', []);
+  all.push(cp);
+  save('epms_checkpoints_v2', all);
+  return cp;
+}
+
+export async function updateCheckpoint(
+  id: string,
+  patch: Partial<{ label: string; done: boolean; sortOrder: number }>
+): Promise<StageCheckpoint> {
+  if (useNeon) return srv.updateCheckpointAction(id, patch);
+  const all = load<StageCheckpoint[]>('epms_checkpoints_v2', []);
+  const i = all.findIndex((c) => c.id === id);
+  if (i < 0) throw new Error('Checkpoint not found');
+  all[i] = { ...all[i], ...patch, updatedAt: nowIso() };
+  save('epms_checkpoints_v2', all);
+  return all[i];
+}
+
+export async function deleteCheckpoint(id: string): Promise<void> {
+  if (useNeon) return srv.deleteCheckpointAction(id);
+  save(
+    'epms_checkpoints_v2',
+    load<StageCheckpoint[]>('epms_checkpoints_v2', []).filter((c) => c.id !== id)
+  );
+}
+
+// ─── Daily todos (personal todoist) ────────────────────────────────────────
+
+const DAILY_TODOS_KEY = 'epms_daily_todos_v1';
+
+export async function listDailyTodos(userId: string): Promise<DailyTodo[]> {
+  if (useNeon) return srv.listDailyTodosAction(userId);
+  return load<DailyTodo[]>(DAILY_TODOS_KEY, [])
+    .filter((t) => t.userId === userId)
+    .sort((a, b) =>
+      Number(a.done) - Number(b.done) || a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt)
+    );
+}
+
+export async function createDailyTodo(input: {
+  userId: string;
+  label: string;
+  dueDate?: string;
+  sortOrder?: number;
+}): Promise<DailyTodo> {
+  if (useNeon) return srv.createDailyTodoAction(input);
+  const now = nowIso();
+  const t: DailyTodo = {
+    id: rid('td'),
+    userId: input.userId,
+    label: input.label,
+    done: false,
+    dueDate: input.dueDate,
+    sortOrder: input.sortOrder ?? 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const all = load<DailyTodo[]>(DAILY_TODOS_KEY, []);
+  all.push(t);
+  save(DAILY_TODOS_KEY, all);
+  return t;
+}
+
+export async function updateDailyTodo(
+  id: string,
+  patch: Partial<{ label: string; done: boolean; dueDate: string | null; sortOrder: number }>
+): Promise<DailyTodo> {
+  if (useNeon) return srv.updateDailyTodoAction(id, patch);
+  const all = load<DailyTodo[]>(DAILY_TODOS_KEY, []);
+  const i = all.findIndex((t) => t.id === id);
+  if (i < 0) throw new Error('Todo not found');
+  all[i] = {
+    ...all[i],
+    ...patch,
+    dueDate: patch.dueDate === null ? undefined : patch.dueDate ?? all[i].dueDate,
+    updatedAt: nowIso(),
+  };
+  save(DAILY_TODOS_KEY, all);
+  return all[i];
+}
+
+export async function deleteDailyTodo(id: string): Promise<void> {
+  if (useNeon) return srv.deleteDailyTodoAction(id);
+  save(DAILY_TODOS_KEY, load<DailyTodo[]>(DAILY_TODOS_KEY, []).filter((t) => t.id !== id));
 }
 
 // ─── Attendance ────────────────────────────────────────────────────────────

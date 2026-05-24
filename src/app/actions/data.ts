@@ -5,6 +5,8 @@ import {
   mapMajor,
   mapSub,
   mapStage,
+  mapCheckpoint,
+  mapDailyTodo,
   mapAttendance,
   mapHoliday,
   mapNotification,
@@ -16,6 +18,8 @@ import type {
   MajorProject,
   SubProject,
   StageSchedule,
+  StageCheckpoint,
+  DailyTodo,
   AttendanceRecord,
   Holiday,
   NotificationItem,
@@ -160,7 +164,19 @@ export async function createSubProjectAction(input: {
   `) as Record<string, unknown>[];
   const sub = mapSub(rows[0]);
 
-  const STAGE_NAMES = ['Concept', 'Design', 'Fabrication', 'Installation', 'Trial', 'Validation', 'Completion'];
+  const STAGE_NAMES = [
+    'Concept',
+    'Tenders Pack',
+    'CapEx',
+    'Design and Drawing',
+    'Fabrication',
+    'Pre Delivery',
+    'Tax Exemption',
+    'Delivery to Site',
+    'Installation',
+    'Trial',
+    'Handover',
+  ];
   await sql`
     insert into stage_schedules (sub_project_id, stage_index, stage_name)
     select ${sub.id}::uuid, idx - 1, name::stage_enum
@@ -244,6 +260,105 @@ export async function updateStageAction(
   `) as Record<string, unknown>[];
   if (!rows[0]) throw new Error('Stage not found');
   return mapStage(rows[0]);
+}
+
+// ─── Stage checkpoints (todolist per stage) ───────────────────────────────
+
+export async function listCheckpointsForStagesAction(stageIds: string[]): Promise<StageCheckpoint[]> {
+  if (stageIds.length === 0) return [];
+  const sql = requireSql();
+  const rows = (await sql`
+    select * from stage_checkpoints
+    where stage_id = any(${stageIds}::uuid[])
+    order by stage_id, sort_order, created_at
+  `) as Record<string, unknown>[];
+  return rows.map(mapCheckpoint);
+}
+
+export async function createCheckpointAction(input: {
+  stageId: string;
+  label: string;
+  sortOrder?: number;
+}): Promise<StageCheckpoint> {
+  const sql = requireSql();
+  const rows = (await sql`
+    insert into stage_checkpoints (stage_id, label, sort_order)
+    values (${input.stageId}, ${input.label}, ${input.sortOrder ?? 0})
+    returning *
+  `) as Record<string, unknown>[];
+  return mapCheckpoint(rows[0]);
+}
+
+export async function updateCheckpointAction(
+  id: string,
+  patch: Partial<{ label: string; done: boolean; sortOrder: number }>
+): Promise<StageCheckpoint> {
+  const sql = requireSql();
+  const rows = (await sql`
+    update stage_checkpoints set
+      label      = coalesce(${patch.label ?? null}, label),
+      done       = coalesce(${patch.done ?? null}, done),
+      sort_order = coalesce(${patch.sortOrder ?? null}, sort_order)
+    where id = ${id}
+    returning *
+  `) as Record<string, unknown>[];
+  if (!rows[0]) throw new Error('Checkpoint not found');
+  return mapCheckpoint(rows[0]);
+}
+
+export async function deleteCheckpointAction(id: string): Promise<void> {
+  const sql = requireSql();
+  await sql`delete from stage_checkpoints where id = ${id}`;
+}
+
+// ─── Daily todos (personal, per-user) ─────────────────────────────────────
+
+export async function listDailyTodosAction(userId: string): Promise<DailyTodo[]> {
+  const sql = requireSql();
+  const rows = (await sql`
+    select * from daily_todos
+    where user_id = ${userId}
+    order by done, sort_order, created_at
+  `) as Record<string, unknown>[];
+  return rows.map(mapDailyTodo);
+}
+
+export async function createDailyTodoAction(input: {
+  userId: string;
+  label: string;
+  dueDate?: string;
+  sortOrder?: number;
+}): Promise<DailyTodo> {
+  const sql = requireSql();
+  const rows = (await sql`
+    insert into daily_todos (user_id, label, due_date, sort_order)
+    values (${input.userId}, ${input.label}, ${input.dueDate ?? null}, ${input.sortOrder ?? 0})
+    returning *
+  `) as Record<string, unknown>[];
+  return mapDailyTodo(rows[0]);
+}
+
+export async function updateDailyTodoAction(
+  id: string,
+  patch: Partial<{ label: string; done: boolean; dueDate: string | null; sortOrder: number }>
+): Promise<DailyTodo> {
+  const sql = requireSql();
+  const rows = (await sql`
+    update daily_todos set
+      label      = coalesce(${patch.label ?? null}, label),
+      done       = coalesce(${patch.done ?? null}, done),
+      due_date   = coalesce(${patch.dueDate ?? null}, due_date),
+      sort_order = coalesce(${patch.sortOrder ?? null}, sort_order)
+    where id = ${id}
+    returning *
+  `) as Record<string, unknown>[];
+  if (!rows[0]) throw new Error('Todo not found');
+  return mapDailyTodo(rows[0]);
+}
+
+export async function deleteDailyTodoAction(id: string): Promise<void> {
+  const sql = requireSql();
+  await sql`delete from daily_todos where id = ${id}`;
 }
 
 // ─── Attendance ───────────────────────────────────────────────────────────

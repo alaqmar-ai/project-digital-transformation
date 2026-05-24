@@ -39,11 +39,23 @@ if (!url) {
   process.exit(1);
 }
 
-const STAGES = ['Concept', 'Design', 'Fabrication', 'Installation', 'Trial', 'Validation', 'Completion'];
+const STAGES = [
+  'Concept',
+  'Tenders Pack',
+  'CapEx',
+  'Design and Drawing',
+  'Fabrication',
+  'Pre Delivery',
+  'Tax Exemption',
+  'Delivery to Site',
+  'Installation',
+  'Trial',
+  'Handover',
+];
 const ATTENDANCE_WEEKDAY = [
   'Present', 'Annual Leave', 'Half-day (AM)', 'Half-day (PM)', 'Emergency Leave',
   'Medical Leave', 'Hospitalization Leave', 'Training', 'Business Trip',
-  'Unpaid Leave', 'Compassionate Leave', 'Holiday Job',
+  'Unpaid Leave', 'Compassionate Leave', 'Holiday Job', 'Late', 'SAP'
 ];
 
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -77,10 +89,10 @@ try {
   // ── Major projects ────────────────────────────────────────────────────
   console.log('→ Inserting major projects…');
   const majorSeeds = [
-    { name: 'Chassis Line 4 Retooling', desc: 'Retool the chassis main line to support new model platform.', owner: U.hidayat, status: 'In Progress', prog: 62, createdOff: -120 },
-    { name: 'Trim & Final Robotics Cell', desc: 'New robotic cell in Trim & Final for door & dashboard fitment.', owner: U.ahmad, status: 'In Progress', prog: 41, createdOff: -90 },
-    { name: 'Inspection Tunnel Upgrade', desc: 'Replace legacy inspection tunnel with vision-based QC system.', owner: U.faiz, status: 'Delayed', prog: 28, createdOff: -70 },
-    { name: 'Pilot Line for New EV Model', desc: 'Build pilot line for upcoming EV model - feasibility + tooling.', owner: U.admin, status: 'Pending', prog: 12, createdOff: -30 },
+    { name: 'Toyota Vios',          desc: 'Production line setup and tooling for Toyota Vios sedan.',           owner: U.hidayat, status: 'In Progress', prog: 62, createdOff: -120 },
+    { name: 'Toyota Corolla Cross', desc: 'New model introduction line for Toyota Corolla Cross SUV.',          owner: U.ahmad,   status: 'In Progress', prog: 41, createdOff: -90  },
+    { name: 'Toyota Hilux',         desc: 'Body-on-frame line upgrade for Toyota Hilux pickup.',                owner: U.faiz,    status: 'Delayed',     prog: 28, createdOff: -70  },
+    { name: 'Toyota Camry',         desc: 'Pilot tooling and validation line for Toyota Camry refresh.',        owner: U.admin,   status: 'Pending',     prog: 12, createdOff: -30  },
   ];
   const majorIds = [];
   for (const m of majorSeeds) {

@@ -4,6 +4,8 @@ import type {
   MajorProject,
   SubProject,
   StageSchedule,
+  StageCheckpoint,
+  DailyTodo,
   AttendanceRecord,
   Holiday,
   NotificationItem,
@@ -121,6 +123,31 @@ export function mapStage(r: Row): StageSchedule {
     status: asString(r.status) as Status,
     progress: asNumber(r.progress),
     remarks: asOptionalString(r.remarks),
+  };
+}
+
+export function mapCheckpoint(r: Row): StageCheckpoint {
+  return {
+    id: asString(r.id),
+    stageId: asString(r.stage_id),
+    label: asString(r.label),
+    done: asBool(r.done),
+    sortOrder: asNumber(r.sort_order),
+    createdAt: asIso(r.created_at),
+    updatedAt: asIso(r.updated_at),
+  };
+}
+
+export function mapDailyTodo(r: Row): DailyTodo {
+  return {
+    id: asString(r.id),
+    userId: asString(r.user_id),
+    label: asString(r.label),
+    done: asBool(r.done),
+    dueDate: asDateStr(r.due_date),
+    sortOrder: asNumber(r.sort_order),
+    createdAt: asIso(r.created_at),
+    updatedAt: asIso(r.updated_at),
   };
 }
 

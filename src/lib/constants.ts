@@ -3,15 +3,19 @@ export const CONFIG = {
   TEAM_TOKEN: 'toyota2024',
 };
 
-// 7 stages per spec
+// 11 stages per spec
 export const STAGES = [
   'Concept',
-  'Design',
+  'Tenders Pack',
+  'CapEx',
+  'Design and Drawing',
   'Fabrication',
+  'Pre Delivery',
+  'Tax Exemption',
+  'Delivery to Site',
   'Installation',
   'Trial',
-  'Validation',
-  'Completion',
+  'Handover',
 ] as const;
 export type StageName = (typeof STAGES)[number];
 
@@ -92,6 +96,8 @@ export const ATTENDANCE_WEEKDAY = [
   'Unpaid Leave',
   'Compassionate Leave',
   'Holiday Job',
+  'Late',
+  'SAP',
 ] as const;
 export type AttendanceWeekday = (typeof ATTENDANCE_WEEKDAY)[number];
 
@@ -112,6 +118,8 @@ export const ATTENDANCE_COLORS: Record<string, string> = {
   'Compassionate Leave': '#FCE7F3',
   'Holiday Job': '#FEF9C3',
   'Weekend Job': '#FEF3C7',
+  Late: '#FFEDD5',
+  SAP: '#CCFBF1',
 };
 
 // Notification lead-time schedule (days before plan_end)

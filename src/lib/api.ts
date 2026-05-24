@@ -1,5 +1,8 @@
 import { Project, Stage, User } from './types';
 import { CONFIG, STAGES } from './constants';
+import { listUsersAction } from '@/app/actions/data';
+
+const useNeon = process.env.NEXT_PUBLIC_USE_NEON === 'true';
 
 const API_URL = CONFIG.API_URL;
 const isOffline = !API_URL || API_URL === 'YOUR_APPS_SCRIPT_URL_HERE';
@@ -88,6 +91,27 @@ export async function loginUser(username: string, password: string): Promise<Use
       (u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password
     );
     if (!found) throw new Error('Invalid credentials');
+    // When Neon is enabled, resolve the real DB UUID so subsequent inserts
+    // (activity_logs.user_id, etc.) don't fail with "invalid uuid syntax".
+    if (useNeon) {
+      try {
+        const dbUsers = await listUsersAction();
+        const match = dbUsers.find(
+          (u) => u.username.toLowerCase() === found.username.toLowerCase()
+        );
+        if (match) {
+          return {
+            id: match.id,
+            username: match.username,
+            name: match.name,
+            role: match.role,
+            email: match.email,
+          };
+        }
+      } catch {
+        /* fall through to demo id */
+      }
+    }
     const user: User = {
       id: found.id,
       username: found.username,
