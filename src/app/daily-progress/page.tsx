@@ -7,8 +7,8 @@ import {
   Loader2,
   CheckCircle2,
   Circle,
-  Calendar,
-  CheckSquare,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import PageHeader from '@/components/ui/PageHeader';
@@ -20,15 +20,34 @@ import {
 } from '@/lib/data/store';
 import type { DailyTodo } from '@/lib/types';
 import { todayIso } from '@/lib/status';
-import { formatDate, cn } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function pad2(n: number) {
+  return n.toString().padStart(2, '0');
+}
+function isoOf(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+/** Monday of the week containing `d`. */
+function mondayOf(d: Date) {
+  const x = new Date(d);
+  const day = x.getDay(); // 0 Sun .. 6 Sat
+  x.setDate(x.getDate() + (day === 0 ? -6 : 1 - day));
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
 
 export default function DailyProgressPage() {
   const { user, addToast } = useApp();
   const [todos, setTodos] = useState<DailyTodo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [draftLabel, setDraftLabel] = useState('');
-  const [draftDue, setDraftDue] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+
+  const today = todayIso();
+  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
 
   useEffect(() => {
     if (!user?.id) return;
@@ -49,42 +68,67 @@ export default function DailyProgressPage() {
     };
   }, [user?.id, addToast]);
 
-  const today = todayIso();
+  // Mon–Fri dates of the displayed week.
+  const weekDays = useMemo(() => {
+    return WEEKDAYS.map((name, i) => {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      return { name, iso: isoOf(d), dayNum: d.getDate(), month: MONTHS[d.getMonth()] };
+    });
+  }, [weekStart]);
 
-  const { open, done } = useMemo(() => {
-    return {
-      open: todos.filter((t) => !t.done),
-      done: todos.filter((t) => t.done),
-    };
-  }, [todos]);
+  const weekIsoSet = useMemo(() => new Set(weekDays.map((d) => d.iso)), [weekDays]);
 
-  const overdueCount = useMemo(
-    () => open.filter((t) => t.dueDate && t.dueDate < today).length,
-    [open, today]
-  );
+  // Group todos by due date; anything undated (or outside this week) lands in Unscheduled.
+  const byDay = useMemo(() => {
+    const map = new Map<string, DailyTodo[]>();
+    weekDays.forEach((d) => map.set(d.iso, []));
+    const unscheduled: DailyTodo[] = [];
+    todos.forEach((t) => {
+      if (t.dueDate && weekIsoSet.has(t.dueDate)) map.get(t.dueDate)!.push(t);
+      else unscheduled.push(t);
+    });
+    const sort = (a: DailyTodo, b: DailyTodo) =>
+      Number(a.done) - Number(b.done) || a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt);
+    map.forEach((arr) => arr.sort(sort));
+    unscheduled.sort(sort);
+    return { map, unscheduled };
+  }, [todos, weekDays, weekIsoSet]);
 
-  const handleAdd = async () => {
-    const label = draftLabel.trim();
-    if (!label || !user?.id) return;
-    setBusy('add');
+  const weekLabel = useMemo(() => {
+    const fri = new Date(weekStart);
+    fri.setDate(weekStart.getDate() + 4);
+    const sameMonth = weekStart.getMonth() === fri.getMonth();
+    return sameMonth
+      ? `${weekStart.getDate()} – ${fri.getDate()} ${MONTHS[fri.getMonth()]} ${fri.getFullYear()}`
+      : `${weekStart.getDate()} ${MONTHS[weekStart.getMonth()]} – ${fri.getDate()} ${MONTHS[fri.getMonth()]}`;
+  }, [weekStart]);
+
+  const shiftWeek = (deltaDays: number) =>
+    setWeekStart((w) => {
+      const n = new Date(w);
+      n.setDate(w.getDate() + deltaDays);
+      return n;
+    });
+
+  // ── Mutations (optimistic) ────────────────────────────────────────────────
+  const addTask = async (label: string, dueIso: string | null) => {
+    const text = label.trim();
+    if (!text || !user?.id) return;
     try {
       const created = await createDailyTodo({
         userId: user.id,
-        label,
-        dueDate: draftDue || undefined,
+        label: text,
+        dueDate: dueIso ?? undefined,
         sortOrder: todos.length,
       });
       setTodos((prev) => [...prev, created]);
-      setDraftLabel('');
-      setDraftDue('');
     } catch (e) {
       addToast('error', (e as Error).message);
-    } finally {
-      setBusy(null);
     }
   };
 
-  const handleToggle = async (todo: DailyTodo) => {
+  const toggle = async (todo: DailyTodo) => {
     setBusy(todo.id);
     try {
       const updated = await updateDailyTodo(todo.id, { done: !todo.done });
@@ -96,7 +140,7 @@ export default function DailyProgressPage() {
     }
   };
 
-  const handleDelete = async (todo: DailyTodo) => {
+  const remove = async (todo: DailyTodo) => {
     setBusy(todo.id);
     try {
       await deleteDailyTodo(todo.id);
@@ -108,146 +152,209 @@ export default function DailyProgressPage() {
     }
   };
 
+  const reschedule = async (id: string, dueIso: string | null) => {
+    const cur = todos.find((t) => t.id === id);
+    if (!cur || (cur.dueDate ?? null) === dueIso) return;
+    // Optimistic
+    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, dueDate: dueIso ?? undefined } : t)));
+    try {
+      await updateDailyTodo(id, { dueDate: dueIso });
+    } catch (e) {
+      addToast('error', (e as Error).message);
+      // Revert
+      setTodos((prev) => prev.map((t) => (t.id === id ? cur : t)));
+    }
+  };
+
   return (
-    <div className="p-6 md:p-10 max-w-3xl mx-auto">
+    <div className="p-6 md:p-10 max-w-content mx-auto">
       <PageHeader
         title="Daily Progress"
-        subtitle="Your personal todo list - add anything you're working on today"
+        subtitle="Your week at a glance — drag tasks between days to reschedule"
       />
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <StatTile label="Open" value={open.length} tone="blue" icon={<Circle size={16} />} />
-        <StatTile label="Overdue" value={overdueCount} tone="red" icon={<Calendar size={16} />} />
-        <StatTile label="Done" value={done.length} tone="green" icon={<CheckSquare size={16} />} />
-      </div>
-
-      {/* Add new */}
-      <div className="bg-white border border-border rounded-2xl shadow-card p-4 mb-6">
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="text"
-            value={draftLabel}
-            onChange={(e) => setDraftLabel(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleAdd();
-              }
-            }}
-            placeholder="What needs to get done?"
-            disabled={busy === 'add'}
-            className="input-styled text-sm py-2 flex-1"
-          />
-          <input
-            type="date"
-            value={draftDue}
-            onChange={(e) => setDraftDue(e.target.value)}
-            disabled={busy === 'add'}
-            className="input-styled text-sm py-2 font-mono w-full sm:w-44"
-            title="Optional due date"
-          />
+      {/* Week navigation */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={handleAdd}
-            disabled={!draftLabel.trim() || busy === 'add'}
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => shiftWeek(-7)}
+            className="p-2 rounded-lg border border-border bg-white hover:bg-elevated text-text-secondary"
+            aria-label="Previous week"
           >
-            {busy === 'add' ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-            Add
+            <ChevronLeft size={16} />
           </button>
+          <button
+            type="button"
+            onClick={() => shiftWeek(7)}
+            className="p-2 rounded-lg border border-border bg-white hover:bg-elevated text-text-secondary"
+            aria-label="Next week"
+          >
+            <ChevronRight size={16} />
+          </button>
+          <span className="ml-1 text-sm font-semibold text-text-primary">{weekLabel}</span>
         </div>
+        <button
+          type="button"
+          onClick={() => setWeekStart(mondayOf(new Date()))}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-white hover:bg-elevated text-text-secondary"
+        >
+          This week
+        </button>
       </div>
 
       {loading ? (
-        <div className="space-y-2">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="skeleton h-12 rounded-xl" />
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="skeleton h-72 rounded-2xl" />
           ))}
         </div>
       ) : (
-        <>
-          <Section
-            title="To do"
-            count={open.length}
-            empty="Nothing on your list - add something above."
-            todos={open}
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {weekDays.map((d) => (
+            <DayColumn
+              key={d.iso}
+              title={d.name}
+              dateLabel={`${d.dayNum} ${d.month}`}
+              isToday={d.iso === today}
+              todos={byDay.map.get(d.iso) ?? []}
+              busy={busy}
+              today={today}
+              onAdd={(label) => addTask(label, d.iso)}
+              onToggle={toggle}
+              onDelete={remove}
+              onDropTask={(id) => reschedule(id, d.iso)}
+            />
+          ))}
+          <DayColumn
+            title="Unscheduled"
+            dateLabel="No date"
+            isToday={false}
+            todos={byDay.unscheduled}
             busy={busy}
             today={today}
-            onToggle={handleToggle}
-            onDelete={handleDelete}
+            onAdd={(label) => addTask(label, null)}
+            onToggle={toggle}
+            onDelete={remove}
+            onDropTask={(id) => reschedule(id, null)}
+            muted
           />
-
-          {done.length > 0 && (
-            <div className="mt-8">
-              <Section
-                title="Done"
-                count={done.length}
-                empty=""
-                todos={done}
-                busy={busy}
-                today={today}
-                onToggle={handleToggle}
-                onDelete={handleDelete}
-                muted
-              />
-            </div>
-          )}
-        </>
+        </div>
       )}
     </div>
   );
 }
 
-function Section({
+function DayColumn({
   title,
-  count,
-  empty,
+  dateLabel,
+  isToday,
   todos,
   busy,
   today,
+  onAdd,
   onToggle,
   onDelete,
+  onDropTask,
   muted,
 }: {
   title: string;
-  count: number;
-  empty: string;
+  dateLabel: string;
+  isToday: boolean;
   todos: DailyTodo[];
   busy: string | null;
   today: string;
+  onAdd: (label: string) => void;
   onToggle: (t: DailyTodo) => void;
   onDelete: (t: DailyTodo) => void;
+  onDropTask: (id: string) => void;
   muted?: boolean;
 }) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+
+  const submit = () => {
+    if (draft.trim()) onAdd(draft);
+    setDraft('');
+    setAdding(false);
+  };
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2 px-1">
-        <h3 className={cn('text-xs font-bold uppercase tracking-wider', muted ? 'text-text-muted' : 'text-text-secondary')}>
-          {title}
+    <div className="flex-shrink-0 w-64 flex flex-col">
+      <div className="flex items-baseline gap-2 px-1 mb-2">
+        <h3 className={cn('text-sm font-bold', isToday ? 'text-primary' : muted ? 'text-text-muted' : 'text-text-primary')}>
+          {dateLabel}
         </h3>
-        <span className="text-[10px] font-mono text-text-muted">{count}</span>
+        <span className={cn('text-xs font-medium', muted ? 'text-text-muted' : 'text-text-secondary')}>{title}</span>
+        <span className="ml-auto text-[11px] font-mono text-text-muted">{todos.length}</span>
       </div>
-      {todos.length === 0 ? (
-        empty && <p className="text-sm text-text-muted italic px-1 py-3">{empty}</p>
-      ) : (
-        <ul className="space-y-2">
-          {todos.map((t) => (
-            <TodoRow
-              key={t.id}
-              todo={t}
-              busy={busy === t.id}
-              overdue={!t.done && !!t.dueDate && t.dueDate < today}
-              onToggle={() => onToggle(t)}
-              onDelete={() => onDelete(t)}
-            />
-          ))}
-        </ul>
-      )}
+
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (!dragOver) setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const id = e.dataTransfer.getData('text/plain');
+          if (id) onDropTask(id);
+        }}
+        className={cn(
+          'flex-1 min-h-[8rem] rounded-2xl border p-2 space-y-2 transition-colors',
+          dragOver ? 'border-primary bg-primary-light/40' : 'border-border bg-elevated/30',
+          isToday && !dragOver && 'border-primary/40'
+        )}
+      >
+        {todos.map((t) => (
+          <TaskCard
+            key={t.id}
+            todo={t}
+            busy={busy === t.id}
+            overdue={!t.done && !!t.dueDate && t.dueDate < today}
+            onToggle={() => onToggle(t)}
+            onDelete={() => onDelete(t)}
+          />
+        ))}
+
+        {adding ? (
+          <input
+            autoFocus
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={submit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submit();
+              } else if (e.key === 'Escape') {
+                setDraft('');
+                setAdding(false);
+              }
+            }}
+            placeholder="Task name…"
+            className="input-styled text-sm py-2 w-full"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-text-muted hover:text-primary hover:bg-white transition-colors"
+          >
+            <Plus size={14} />
+            Add task
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
-function TodoRow({
+function TaskCard({
   todo,
   busy,
   overdue,
@@ -261,10 +368,16 @@ function TodoRow({
   onDelete: () => void;
 }) {
   return (
-    <li
+    <div
+      draggable={!busy}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', todo.id);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
       className={cn(
-        'group bg-white border border-border rounded-xl px-3 py-2.5 flex items-center gap-3 shadow-card hover:shadow-elevated transition-all',
-        todo.done && 'bg-elevated/40'
+        'group bg-white border border-border rounded-xl px-3 py-2.5 flex items-start gap-2.5 shadow-card hover:shadow-elevated transition-all cursor-grab active:cursor-grabbing',
+        todo.done && 'bg-elevated/40',
+        overdue && 'border-red-200'
       )}
     >
       <button
@@ -272,82 +385,39 @@ function TodoRow({
         onClick={onToggle}
         disabled={busy}
         className={cn(
-          'flex-shrink-0 transition-colors',
+          'flex-shrink-0 mt-0.5 transition-colors',
           todo.done ? 'text-emerald-600' : 'text-text-muted hover:text-primary',
           busy && 'opacity-50'
         )}
         aria-label={todo.done ? 'Reopen' : 'Mark complete'}
       >
         {busy ? (
-          <Loader2 size={20} className="animate-spin" />
+          <Loader2 size={18} className="animate-spin" />
         ) : todo.done ? (
-          <CheckCircle2 size={20} />
+          <CheckCircle2 size={18} />
         ) : (
-          <Circle size={20} />
+          <Circle size={18} />
         )}
       </button>
 
       <span
         className={cn(
-          'flex-1 text-sm leading-snug',
+          'flex-1 text-sm leading-snug break-words',
           todo.done ? 'line-through text-text-muted' : 'text-text-primary'
         )}
       >
         {todo.label}
       </span>
 
-      {todo.dueDate && (
-        <span
-          className={cn(
-            'inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-md',
-            overdue
-              ? 'bg-red-50 text-danger'
-              : todo.done
-                ? 'bg-elevated text-text-muted'
-                : 'bg-primary-light text-primary'
-          )}
-        >
-          <Calendar size={10} />
-          {formatDate(todo.dueDate)}
-        </span>
-      )}
-
       <button
         type="button"
         onClick={onDelete}
         disabled={busy}
-        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50 text-text-muted hover:text-red-600 disabled:opacity-50"
+        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 -m-1 rounded hover:bg-red-50 text-text-muted hover:text-red-600 disabled:opacity-50"
         aria-label="Delete"
       >
-        <Trash2 size={14} />
+        <Trash2 size={13} />
       </button>
-    </li>
-  );
-}
-
-function StatTile({
-  label,
-  value,
-  tone,
-  icon,
-}: {
-  label: string;
-  value: number;
-  tone: 'blue' | 'red' | 'green';
-  icon: React.ReactNode;
-}) {
-  const map = {
-    blue: 'bg-primary-light text-primary',
-    red: 'bg-red-50 text-danger',
-    green: 'bg-emerald-50 text-emerald-600',
-  };
-  return (
-    <div className="bg-white border border-border rounded-2xl p-4 shadow-card">
-      <div className="flex items-center justify-between mb-1">
-        <p className="text-[10px] uppercase tracking-wider font-semibold text-text-muted">{label}</p>
-        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${map[tone]}`}>{icon}</div>
-      </div>
-      <p className="text-xl font-bold text-text-primary font-mono">{value}</p>
     </div>
   );
 }
