@@ -32,6 +32,7 @@ import type {
   HolidayKind,
   NotificationKind,
 } from '@/lib/types';
+import { hashPassword, verifyPassword } from '@/lib/auth';
 
 export async function dbAvailableAction(): Promise<boolean> {
   return neonEnabled;
@@ -53,8 +54,8 @@ export async function createUserAction(input: {
 }): Promise<User> {
   const sql = requireSql();
   const rows = (await sql`
-    insert into users (username, name, role, email)
-    values (${input.username}, ${input.name}, ${input.role}, ${input.email ?? null})
+    insert into users (username, name, role, email, password_hash)
+    values (${input.username}, ${input.name}, ${input.role}, ${input.email ?? null}, ${hashPassword(input.username)})
     returning *
   `) as Record<string, unknown>[];
   return mapUser(rows[0]);
@@ -81,6 +82,35 @@ export async function updateUserAction(
 export async function deleteUserAction(id: string): Promise<void> {
   const sql = requireSql();
   await sql`delete from users where id = ${id}`;
+}
+
+export async function authenticateAction(username: string, password: string): Promise<User | null> {
+  const sql = requireSql();
+  const rows = (await sql`
+    select * from users where lower(username) = lower(${username}) limit 1
+  `) as Record<string, unknown>[];
+  const row = rows[0];
+  if (!row || !verifyPassword(password, (row.password_hash as string | null) ?? null)) return null;
+  return mapUser(row);
+}
+
+export async function changePasswordAction(
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!newPassword || newPassword.length < 4) {
+    return { ok: false, error: 'New password must be at least 4 characters' };
+  }
+  const sql = requireSql();
+  const rows = (await sql`select password_hash from users where id = ${userId} limit 1`) as Record<string, unknown>[];
+  const row = rows[0];
+  if (!row) return { ok: false, error: 'User not found' };
+  if (!verifyPassword(currentPassword, (row.password_hash as string | null) ?? null)) {
+    return { ok: false, error: 'Current password is incorrect' };
+  }
+  await sql`update users set password_hash = ${hashPassword(newPassword)}, updated_at = now() where id = ${userId}`;
+  return { ok: true };
 }
 
 // ─── Major projects ───────────────────────────────────────────────────────

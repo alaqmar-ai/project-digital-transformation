@@ -24,7 +24,7 @@ import type {
 import { STAGES } from '@/lib/constants';
 import * as srv from '@/app/actions/data';
 
-export const useNeon = process.env.NEXT_PUBLIC_USE_NEON === 'true';
+export const useNeon = process.env.NEXT_PUBLIC_USE_NEON?.trim() === 'true';
 
 // ─── localStorage keys (versioned) ─────────────────────────────────────────
 

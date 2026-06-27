@@ -135,11 +135,11 @@ export default function GanttPage() {
       ) : (
         <div className="data-table">
           <div className="overflow-x-auto">
-            <table className="border-collapse" style={{ minWidth: 280 + days.length * COL_W }}>
+            <table className="border-collapse" style={{ minWidth: 360 + days.length * COL_W }}>
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-10 bg-[#0c1220] px-3 py-2 text-[10px] text-text-muted font-medium w-[120px] min-w-[120px] border-r border-white/[0.04]" rowSpan={2}>Code</th>
-                  <th className="sticky left-[120px] z-10 bg-[#0c1220] px-3 py-2 text-[10px] text-text-muted font-medium w-[160px] min-w-[160px] border-r border-white/[0.04]" rowSpan={2}>Stage</th>
+                  <th className="sticky left-0 z-10 bg-[#0c1220] px-3 py-2 text-[10px] text-text-muted font-medium w-[200px] min-w-[200px] border-r border-white/[0.04]" rowSpan={2}>Project</th>
+                  <th className="sticky left-[200px] z-10 bg-[#0c1220] px-3 py-2 text-[10px] text-text-muted font-medium w-[160px] min-w-[160px] border-r border-white/[0.04]" rowSpan={2}>Stage</th>
                   {months.map((m, i) => (
                     <th key={i} colSpan={m.span} className="px-1 py-2 text-[9px] text-text-muted text-center border-b border-white/[0.04] font-normal">
                       {m.label}
@@ -177,7 +177,7 @@ export default function GanttPage() {
                         <td className="sticky left-0 z-10 bg-[#060a13] px-3 py-1.5 font-mono text-[10px] text-blue-400 border-r border-white/[0.04] whitespace-nowrap">
                           {si === 0 ? project.code : ''}
                         </td>
-                        <td className="sticky left-[120px] z-10 bg-[#060a13] px-3 py-1.5 text-[10px] text-text-secondary border-r border-white/[0.04] whitespace-nowrap">
+                        <td className="sticky left-[200px] z-10 bg-[#060a13] px-3 py-1.5 text-[10px] text-text-secondary border-r border-white/[0.04] whitespace-nowrap">
                           {stage.stageName}
                         </td>
                         {days.map((d, di) => {

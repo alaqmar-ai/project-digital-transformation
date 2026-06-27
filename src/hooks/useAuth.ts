@@ -6,7 +6,7 @@ import { listUsersAction } from '@/app/actions/data';
 
 const STORAGE_KEY = 'epms_user_v2';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const useNeon = process.env.NEXT_PUBLIC_USE_NEON === 'true';
+const useNeon = process.env.NEXT_PUBLIC_USE_NEON?.trim() === 'true';
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);

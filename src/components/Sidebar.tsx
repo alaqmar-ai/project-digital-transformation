@@ -54,6 +54,7 @@ const STAFF_NAV: NavItem[] = [
   { href: '/attendance', label: 'Attendance Calendar', icon: CalendarDays },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/reports', label: 'Reports', icon: FileBarChart },
+  { href: '/settings', label: 'Account', icon: Settings },
 ];
 
 export default function Sidebar({ user, projectCount, onLogout }: SidebarProps) {

@@ -8,7 +8,6 @@ import { useProjects } from '@/hooks/useProjects';
 import { useToast, ToastMessage } from '@/hooks/useToast';
 import { validateToken } from '@/lib/api';
 import { CONFIG } from '@/lib/constants';
-import { maybeSeed } from '@/lib/data/seed';
 import LoginForm from './LoginForm';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -42,11 +41,6 @@ export default function AppProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading, login, logout } = useAuth();
   const { projects, loading: projectsLoading, error: projectsError, reload } = useProjects();
   const { toasts, addToast, removeToast } = useToast();
-
-  // Seed demo data on first load
-  useEffect(() => {
-    maybeSeed();
-  }, []);
 
   // Optional token-based bypass (e.g. shared dashboard preview link)
   useEffect(() => {
