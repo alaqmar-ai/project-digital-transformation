@@ -3,8 +3,8 @@
 --
 -- New stage order:
 --   1. Concept
---   2. Tenders Pack
---   3. CapEx
+--   2. Tender Spec
+--   3. Capex
 --   4. Design and Drawing
 --   5. Fabrication
 --   6. Pre Delivery
@@ -14,9 +14,10 @@
 --   10. Trial
 --   11. Handover
 --
--- Idempotent: if stage_enum already contains 'Tenders Pack' this migration is
--- a no-op. The first run wipes sub_projects + stage_schedules + major_projects
--- because the old 7-stage shape can't be mapped 1:1.
+-- Idempotent: if stage_enum already has the v2 shape (the tender-spec stage,
+-- under any label it has carried: old 'Tenders Pack' or renamed 'Tender Spec') this
+-- migration is a no-op. The first run wipes sub_projects + stage_schedules +
+-- major_projects because the old 7-stage shape can't be mapped 1:1.
 -- ============================================================================
 
 do $migrate$
@@ -25,7 +26,7 @@ begin
     select 1
     from pg_enum e
     join pg_type t on t.oid = e.enumtypid
-    where t.typname = 'stage_enum' and e.enumlabel = 'Tenders Pack'
+    where t.typname = 'stage_enum' and e.enumlabel in ('Tenders Pack', 'Tender Spec')
   ) then
     raise notice '0003_stages_v2 already applied; skipping';
     return;
@@ -38,8 +39,8 @@ begin
   execute $sql$
     create type stage_enum as enum (
       'Concept',
-      'Tenders Pack',
-      'CapEx',
+      'Tender Spec',
+      'Capex',
       'Design and Drawing',
       'Fabrication',
       'Pre Delivery',

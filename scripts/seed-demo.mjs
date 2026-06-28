@@ -41,8 +41,8 @@ if (!url) {
 
 const STAGES = [
   'Concept',
-  'Tenders Pack',
-  'CapEx',
+  'Tender Spec',
+  'Capex',
   'Design and Drawing',
   'Fabrication',
   'Pre Delivery',

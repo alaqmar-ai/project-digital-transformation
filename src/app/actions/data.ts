@@ -34,6 +34,7 @@ import type {
   HolidayKind,
   NotificationKind,
 } from '@/lib/types';
+import { STAGES } from '@/lib/constants';
 import { hashPassword, verifyPassword } from '@/lib/auth';
 
 export async function dbAvailableAction(): Promise<boolean> {
@@ -197,23 +198,10 @@ export async function createSubProjectAction(input: {
   `) as Record<string, unknown>[];
   const sub = mapSub(rows[0]);
 
-  const STAGE_NAMES = [
-    'Concept',
-    'Tenders Pack',
-    'CapEx',
-    'Design and Drawing',
-    'Fabrication',
-    'Pre Delivery',
-    'Tax Exemption',
-    'Delivery to Site',
-    'Installation',
-    'Trial',
-    'Handover',
-  ];
   await sql`
     insert into stage_schedules (sub_project_id, stage_index, stage_name)
     select ${sub.id}::uuid, idx - 1, name::stage_enum
-    from unnest(${STAGE_NAMES}::text[]) with ordinality as t(name, idx)
+    from unnest(${[...STAGES]}::text[]) with ordinality as t(name, idx)
     on conflict do nothing
   `;
   return sub;

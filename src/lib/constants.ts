@@ -6,8 +6,8 @@ export const CONFIG = {
 // 11 stages per spec
 export const STAGES = [
   'Concept',
-  'Tenders Pack',
-  'CapEx',
+  'Tender Spec',
+  'Capex',
   'Design and Drawing',
   'Fabrication',
   'Pre Delivery',
